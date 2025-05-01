@@ -1,0 +1,213 @@
+import copy
+
+"""
+Land use configuration and the synthetic population configuration
+"""
+
+#####
+# Configuration for all
+#####
+
+# parcel vs TAZ lookup file
+lookup_file = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
+# year range and target year
+base_year = 2014
+target_year = 2044
+future_year =2050
+
+#####
+# Land use configurations
+#####
+working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear'
+#=====
+# Step 1: Prepare land use data
+#=====
+
+## input paths for step 1
+kingcsqft = 'Base By PSRCID (12-31-2024).csv'
+subarea_file = r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv"
+
+## output paths for step 1
+kc_job_file = '2024_BKR_Jobs_new_method.csv'
+kc_SQFT_file = '2024_BKR_Sqft.csv'
+error_parcel_file = 'parcels_not_in_2014_PSRC_parcels.csv'
+kc_du_file = '2024_KC_housingunits.csv'
+cob_du_file = '2024_COB_housingunits.csv'
+
+## other configurations for step 1
+# subset_area can only be these values: 
+# 'Rest of KC','External','BELLEVUE', 'KIRKLAND','REDMOND', 'BellevueFringe', 'KirklandFringe', 'RedmondFringe'
+# if it is empty, means all parcels in kingcsqft file   
+subset_area = ['BELLEVUE', 'KIRKLAND','REDMOND', 'BellevueFringe', 'KirklandFringe', 'RedmondFringe'] 
+# subset_area = ['BELLEVUE']
+SQFT_data_available = True
+#subset_area = []
+job_rename_dict = {'JOBS_EDU':'EMPEDU_P', 'JOBS_FOOD':'EMPFOO_P', 'JOBS_GOV':'EMPGOV_P', 'JOBS_IND':'EMPIND_P',
+    'JOBS_MED':'EMPMED_P', 'JOBS_OFF':'EMPOFC_P', 'JOBS_RET':'EMPRET_P', 'JOBS_RSV':'EMPRSC_P', 'JOBS_SERV':'EMPSVC_P', 'JOBS_OTH':'EMPOTH_P',
+    'JOBS_TOTAL':'EMPTOT_P'}
+sqft_rename_dict = {'SQFT_EDU':'SQFT_EDU', 'SQFT_FOOD':'SQFT_FOO','SQFT_GOV':'SQFT_GOV','SQFT_IND':'SQFT_IND','SQFT_MED':'SQFT_MED', 'SQFT_OFF':'SQFT_OFC',
+    'SQFT_RET':'SQFT_RET', 'SQFT_RSV':'SQFT_RSV', 'SQFT_SERV':'SQFT_SVC', 'SQFT_OTH': 'SQFT_OTH', 'SQFT_NONE':'SQFT_NON', 
+    'SQFT_TOTAL':'SQFT_TOT'}
+du_rename_dict = {'TOTAL_UNITS_SF':'SFUnits', 'TOTAL_UNITS_MF':'MFUnits'}
+
+jobs_columns_List = ['PSRC_ID', 'EMPEDU_P', 'EMPFOO_P', 'EMPGOV_P', 'EMPIND_P', 'EMPMED_P', 'EMPOFC_P', 'EMPRET_P', 'EMPRSC_P', 'EMPSVC_P', 'EMPOTH_P', 'EMPTOT_P']
+sqft_columns_list = ['PSRC_ID', 'SQFT_EDU', 'SQFT_FOO', 'SQFT_GOV', 'SQFT_IND', 'SQFT_MED', 'SQFT_OFC', 'SQFT_RET', 'SQFT_RSV', 'SQFT_SVC', 'SQFT_OTH', 'SQFT_TOT']
+dwellingunits_list = ['PSRC_ID', 'SFUnits', 'MFUnits']
+
+job_cat_list = ['EMPEDU_P', 'EMPFOO_P', 'EMPGOV_P', 'EMPIND_P', 'EMPMED_P', 'EMPOFC_P', 'EMPRET_P', 'EMPRSC_P', 'EMPSVC_P', 'EMPOTH_P']
+sqft_cat_list = ['SQFT_EDU', 'SQFT_FOO', 'SQFT_GOV', 'SQFT_IND', 'SQFT_MED', 'SQFT_OFC', 'SQFT_RET', 'SQFT_RSV', 'SQFT_SVC', 'SQFT_OTH']
+##
+
+#=====
+# Step 2: Validate input parcels
+#=====
+## input paths for step 2
+parcel_lookup_File_Name = r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv"
+parcel_data_file_name = copy.copy(kc_job_file)  #TODO: r'2024_BKR_Jobs_new_method.csv'
+###
+
+## step 2 doesn't require output paths
+
+## other configurations for step 2
+year_parcel = 2014
+# Juridisction = Rest of KC, External, BELLEVUE, BellevueFringe, KIRKLAND, REDMOND, RedmondFridge, KirklandFringe, 
+# only look into this subset of parcel_lookup_df if Jurisdiction is not set to None. Otherwise use the whole set of parcel_lookup_df,
+Jurisdiction = None
+##
+
+#=====
+# Step 3: Interpolate parcel files between what PSRC provided and the parcel data in the horizon year
+#=====
+## input paths for step 3
+parcel_file_name_ealier = r'Z:\Modeling Group\BKRCast\CommonData\original_2014_parcels_urbansim.txt'
+parcel_file_name_latter = r'Z:\Modeling Group\BKRCast\SoundCast\2050_Inputs\2050_SC_parcels_bkr.txt'
+#parcel_file_name_latter = r'Z:\Modeling Group\BKRCast\Other ESD from PSRC\2020\2020_parcels_bkr.txt'
+working_folder = r'Z:\Modeling Group\BKRCast\LandUse\Complan\Complan2044\LU_alt3'
+new_parcel_file_name = 'interpolated_parcel_file_2044complan_from_PSRC_2014_2050.txt'
+
+
+## step 3 doesn't require output paths
+## step 3 doesn't require other configurations
+
+
+#=====
+# Step 4: Replace parcel columns with new tables
+#=====
+## input paths for step 4
+new_Bellevue_parcel_data_file_name = copy.copy(kc_job_file)  #TODO: r"2023_COB_Jobs_new_method.csv"
+new_Redmond_parcel_data_file_name = r'2023_redmond_jobs_reformatted.csv'
+new_Kirkland_parcel_data_file_name = ''
+new_parcel_data_file_name = r"2022_KC_Jobs.csv"
+original_parcel_file_name = r"interpolated_parcel_file_2023_from_PSRC_2014_2050.txt"
+
+## output paths for step 4
+updated_parcel_file_name =  r"2023_baseyear_parcels_urbansim.txt"
+old_Subset_parcel_file_name = r"Old_parcels_subset.txt"
+
+## other configurations for step 4
+set_Jobs_to_Zeros_All_Bel_Parcels_Not_in_New_Parcel_Data_File = True
+set_Jobs_to_Zeros_All_Redmond_Parcels_Not_in_New_Parcel_Data_File = True
+set_Jobs_to_Zeros_All_Kirrkland_Parcels_Not_in_New_Parcel_Data_File = True
+columns_list = jobs_columns_List[1:]
+
+
+#=====
+# Step 5: Synchronize population to parcels
+#=====
+## input paths for step  5
+hh_and_person_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\KirklandSupport\Kirkland2044Complan\WFH\target2044_30%_WFH_by_baseline_worker_conversion_file\2044_kirk_complan_target_hh_and_persons_reallocated_from_baseline_forWFH_30%.h5"
+parcel_folder = r"Z:\Modeling Group\BKRCast\KirklandSupport\Kirkland2044Complan\preferred_2044_30pct_WFH"
+input_parcel_file = '2044_KirklandComplan_target_parcels_urbansim_noWFH.txt'
+output_parcel_file = '2044_kirkcomplan_target_parcels_urbansim_sync_with_30pct_WFH_popsim.txt'
+
+## step 5 doesn't require output paths
+## step 5 doesn't require other configurations
+
+
+#####
+# Synthetic population configurations
+#####
+
+working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear'
+#r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear_with_RedmondData'
+
+#=====
+# Step A: Interpolate household and person data from bookends
+#=====
+## input paths for step A
+future_year_synpop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\PSRC\2050_PSRC_hh_and_persons_bkr.h5"
+base_year_synpop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\PSRC\2014_psrc_hh_and_persons.h5"
+parcel_filename = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
+ofm_estimate_template_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\OFM_estimate_template.csv"
+
+## output paths for step A
+interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\KirklandSupport\Kirkland2044Complan\target2044\2044_ofm_estimate_from_PSRC_2014_2050.csv"
+hhs_by_parcel_filename = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\KirklandSupport\Kirkland2044Complan\target2044\2044_hhs_by_parcels_from_PSRC_2014_2050.csv'
+final_output_pop_file = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\KirklandSupport\Kirkland2044Complan\target2044\2044_interpolated_synthetic_population_from_SC.h5'
+
+## step A doesn't require other configurations
+
+
+#=====
+# Step B: Distribute households to parcels
+#=====
+
+## inputs paths for step B
+hhs_by_parcel = '2023_hhs_by_parcels_from_PSRC_2014_2050.csv' # output file from interpolate_hhs_and_persons_by_GEOID_btw_two_horizon_years.py
+cob_du_file = '2023_COB_housingunits.csv'
+popsim_control_file = 'acecon0403.csv'
+# TAZ level control total (households) from Kirkland and Redmond. (can be any TAZ)
+# if there is no local estimate from Redmond/Kirkland, set it to ''. 
+hhs_control_total_by_TAZ = ''
+
+## outputs paths for step B
+hhs_by_taz_comparison_file = '2023_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison.csv'
+adjusted_hhs_by_parcel_file = '2023_final_hhs_by_parcel.csv'
+popsim_control_output_file = r'ACS2016_controls_2023_Complan.csv'
+parcels_for_allocation_filename = '2023_Complan_parcels_for_allocation_local_estimate.csv'
+summary_by_jurisdiction_filename = '2023_summary_by_jurisdiction.csv'
+#TODO: maybe we do not need this file. we can use an output file from prepare_land_use_step_1.py
+
+## other configurations for step B
+#==
+# occupancy rate for single family and multi family households
+# avg_person_per_hh_Redmond = 2.3146
+# avg_person_per_hh_Kirkland = 2.2576
+
+avg_persons_per_sfhh_Kirkland =  2.82 
+avg_persons_per_mfhh_Kirkland =  2.03
+
+avg_persons_per_sfhh_Redmond =  2.82 
+avg_persons_per_mfhh_Redmond =  2.03
+
+sf_occupancy_rate_Kirkland = 0.952
+mf_occupancy_rate_Kirkland = 0.895
+
+sf_occupancy_rate_Redmond = 0.952
+mf_occupancy_rate_Redmond = 0.895
+
+sf_occupancy_rate = 0.952  # from Gwen
+mf_occupancy_rate = 0.895  # from Gwen
+
+avg_persons_per_sfhh =  2.82 # from Gwen
+avg_persons_per_mfhh =  2.03 # from Gwen
+#==
+
+
+#=====
+# Step C: Parcelize households and persons
+#=====
+
+## input paths for step C
+synthetic_households_file_name = '2023_baseyear_synthetic_households.csv'
+synthetic_population_file_name = '2023_baseyear_synthetic_persons.csv'
+
+# number of hhs per parcel
+parcels_for_allocation_filename = r"2023_final_hhs_by_parcel.csv"
+
+## output paths for step C
+updated_hhs_file_name = 'updated_2023_baseyear_synthetic_households.csv'
+updated_persons_file_name = 'updated_2023_baseyear_synthetic_persons.csv'
+h5_file_name = '2023_baseyear_hh_and_persons.h5'
+
+## step C doesn't require other configurations

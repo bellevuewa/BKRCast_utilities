@@ -1,5 +1,7 @@
 import copy
 
+from datetime import datetime
+
 """
 Land use configuration and the synthetic population configuration
 """
@@ -7,6 +9,11 @@ Land use configuration and the synthetic population configuration
 #####
 # Configuration for all
 #####
+
+modeller_initial = 'oa'
+timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+version = 'v0.0'
+step = 'B'  # step = 1, 2, 3, 4, 5, 'A', 'B', or 'C'. See main.py for more information
 
 # parcel vs TAZ lookup file
 lookup_file = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
@@ -28,16 +35,18 @@ kingcsqft = 'Base By PSRCID (12-31-2024).csv'
 subarea_file = r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv"
 
 ## output paths for step 1
-kc_job_file = '2024_COB_Jobs_new_method.csv'
-kc_SQFT_file = '2024_COB_Sqft.csv'
-error_parcel_file = 'parcels_not_in_2014_PSRC_parcels.csv'
-kc_du_file = '2024_KC_housingunits.csv'
-cob_du_file = '2024_COB_housingunits.csv'
+kc_job_file = f'2024_COB_Jobs_new_method_{modeller_initial}_{version}.csv'
+kc_SQFT_file = f'2024_COB_Sqft_{modeller_initial}_{version}.csv'
+error_parcel_file = f'parcels_not_in_2014_PSRC_parcels_{modeller_initial}_{version}.csv'
+kc_du_file = f'2024_KC_housingunits_{modeller_initial}_{version}.csv'
+cob_du_file = f'2024_COB_housingunits_{modeller_initial}_{version}.csv'
 
 ## other configurations for step 1
-# subset_area can only be these values: 
-# 'Rest of KC','External','BELLEVUE', 'KIRKLAND','REDMOND', 'BellevueFringe', 'KirklandFringe', 'RedmondFringe'
-# if it is empty, means all parcels in kingcsqft file   
+"""
+subset_area can only be these values: 
+'Rest of KC','External','BELLEVUE', 'KIRKLAND','REDMOND', 'BellevueFringe', 'KirklandFringe', 'RedmondFringe'
+if it is empty, means all parcels in kingcsqft file   
+"""
 subset_area = ['BELLEVUE', 'KIRKLAND','REDMOND', 'BellevueFringe', 'KirklandFringe', 'RedmondFringe'] 
 # subset_area = ['BELLEVUE']
 SQFT_data_available = True
@@ -68,16 +77,18 @@ sqft_cat_list = ['SQFT_EDU', 'SQFT_FOO', 'SQFT_GOV', 'SQFT_IND', 'SQFT_MED', 'SQ
 # Step 2: Validate input parcels
 #=====
 ## input paths for step 2
-parcel_lookup_File_Name = r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv"
 parcel_data_file_name = copy.copy(kc_job_file)  #r'2024_BKR_Jobs_new_method.csv'
 ###
 
 ## step 2 doesn't require output paths
 
 ## other configurations for step 2
-year_parcel = 2014  # year of the parcel data to compare with (e.g., 2014)
-# Juridisction = Rest of KC, External, BELLEVUE, BellevueFringe, KIRKLAND, REDMOND, RedmondFridge, KirklandFringe, 
-# only look into this subset of parcel_lookup_df if Jurisdiction is not set to None. Otherwise use the whole set of parcel_lookup_df,
+year_parcel = 2014  # the year of the lookup parcel data (e.g., 2014)
+"""
+# Use Jurisdiction to set which area to look into. 
+# Jurisdiction can be a list of the subset of ['Rest of KC', 'External', 'BELLEVUE', 'BellevueFringe', 'KIRKLAND', 'REDMOND', 'RedmondFridge', 'KirklandFringe']
+# Set Jurisdiction to None if you want to look into all parcels in the lookup_df.
+"""
 Jurisdiction = None
 ##
 
@@ -136,15 +147,15 @@ working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\Po
 # Step A: Interpolate household and person data from bookends
 #=====
 ## input paths for step A
-future_year_synpop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\PSRC\2050_PSRC_hh_and_persons_bkr.h5"
 base_year_synpop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\PSRC\2014_psrc_hh_and_persons.h5"
-parcel_filename = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
+future_year_synpop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\PSRC\2050_PSRC_hh_and_persons_bkr.h5"
+parcel_filename = copy.copy(lookup_file)
 ofm_estimate_template_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\OFM_estimate_template.csv"
 
 ## output paths for step A
-interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_ofm_estimate_from_PSRC_2014_2050.csv"
-hhs_by_parcel_filename = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_hhs_by_parcels_from_PSRC_2014_2050.csv'
-final_output_pop_file = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_interpolated_synthetic_population_from_SC.h5'
+interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_ofm_estimate_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
+hhs_by_parcel_filename = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_hhs_by_parcels_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
+final_output_pop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear\2023_interpolated_synthetic_population_from_SC" + f'_{modeller_initial}_{version}' + ".f5"
 
 ## step A doesn't require other configurations
 
@@ -154,24 +165,27 @@ final_output_pop_file = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\Po
 #=====
 
 ## inputs paths for step B
-hhs_by_parcel = '2023_hhs_by_parcels_from_PSRC_2014_2050.csv' # output file from interpolate_hhs_and_persons_by_GEOID_btw_two_horizon_years.py
-cob_du_file = '2023_COB_housingunits.csv'
+hhs_by_parcel = copy.copy(hhs_by_parcel_filename) # output file from interpolate_hhs_and_persons_by_GEOID_btw_two_horizon_years.py
 popsim_control_file = 'acecon0403.csv'
-# TAZ level control total (households) from Kirkland and Redmond. (can be any TAZ)
-# if there is no local estimate from Redmond/Kirkland, set it to ''. 
+"""
+TAZ level control total (households) from Kirkland and Redmond. (can be any TAZ)
+if there is no local estimate from Redmond/Kirkland, set it to ''. 
+"""
 hhs_control_total_by_TAZ = ''
 
 ## outputs paths for step B
-hhs_by_taz_comparison_file = '2023_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison.csv'
-adjusted_hhs_by_parcel_file = '2023_final_hhs_by_parcel.csv'
-popsim_control_output_file = r'ACS2016_controls_2023_Complan.csv'
-parcels_for_allocation_filename = '2023_Complan_parcels_for_allocation_local_estimate.csv'
-summary_by_jurisdiction_filename = '2023_summary_by_jurisdiction.csv'
+hhs_by_taz_comparison_file = "2023_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison" + f'_{modeller_initial}_{version}' + ".csv"
+adjusted_hhs_by_parcel_file = "2023_final_hhs_by_parcel" + f'_{modeller_initial}_{version}' + ".csv"
+popsim_control_output_file = "ACS2016_controls_2023_Complan" + f'_{modeller_initial}_{version}' + ".csv"
+parcels_for_allocation_filename = "2023_Complan_parcels_for_allocation_local_estimate" + f'_{modeller_initial}_{version}' + ".csv"
+summary_by_jurisdiction_filename = "2023_summary_by_jurisdiction" + f'_{modeller_initial}_{version}' + ".csv"
 #TODO: maybe we do not need this file. we can use an output file from prepare_land_use_step_1.py
 
 ## other configurations for step B
 #==
-# occupancy rate for single family and multi family households
+"""
+Occupancy rate for single family and multi family households
+"""
 # avg_person_per_hh_Redmond = 2.3146
 # avg_person_per_hh_Kirkland = 2.2576
 

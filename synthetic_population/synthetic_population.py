@@ -14,12 +14,23 @@ if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 
-logging.basicConfig(level=logging.INFO)
+log_fname = os.path.join(working_folder_synpop, f"log_synpop_{modeller_initial}_{version}_step{step}_{timestamp}.log")
+logging.basicConfig(filename=log_fname, level=logging.INFO, format="%(asctime)s: %(levelname)s - %(message)s")
+# also log info to console
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+logger = logging.getLogger()
+logger.addHandler(console_handler)
 
 
 class SynPop:
-    def __init__(self):
+    def __init__(self, run_step, backup_folder='backup'):
+        logging.info(f'Creating SynPop object...I/O {version} by modeller: {modeller_initial}')
         logging.info('Loading synthetic populations...')
+        self.run_step = run_step
+        self.backup_folder = backup_folder
+        logging.info(f'Running step {self.run_step}...\n')
+    
         # step A
         self.future_hdf_file = h5py.File(future_year_synpop_file, "r")
         self.base_hdf_file = h5py.File(base_year_synpop_file, "r")
@@ -33,32 +44,34 @@ class SynPop:
         self.base_hh_df['base_total_persons'] = self.base_hh_df['hhexpfac'] * self.base_hh_df['hhsize']
         self.base_hh_df['base_total_hhs'] = self.base_hh_df['hhexpfac']
 
-        self.parcel_df = pd.read_csv(parcel_filename, low_memory=False) 
+        self.parcel_df = pd.read_csv(parcel_filename, low_memory=False)
         self.future_hh_df = self.future_hh_df.merge(self.parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
         self.future_hhs_by_geoid10 = self.future_hh_df.groupby('GEOID10')[['future_total_hhs', 'future_total_persons']].sum()
         self.base_hh_df = self.base_hh_df.merge(self.parcel_df, how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
         self.base_hhs_by_geoid10 = self.base_hh_df.groupby('GEOID10')[['base_total_hhs', 'base_total_persons']].sum()
 
-        logging.info('Future total hhs: ' + str(self.future_hh_df['future_total_hhs'].sum()))
-        logging.info('Future total persons: '  + str(self.future_hh_df['future_total_persons'].sum()))
-        logging.info('Base total hhs: ' + str(self.base_hh_df['base_total_hhs'].sum()))
-        logging.info('Base total persons: ' + str(self.base_hh_df['base_total_persons'].sum()))
+        logging.info(f"Future total hhs: {self.future_hh_df['future_total_hhs'].sum():,.0f}")
+        logging.info(f"Future total persons: {self.future_hh_df['future_total_persons'].sum():,.0f}\n")
+        logging.info(f"Base total hhs: {self.base_hh_df['base_total_hhs'].sum():,.0f}")
+        logging.info(f"Base total persons: {self.base_hh_df['base_total_persons'].sum():,.0f}\n")
 
         self.ofm_df = pd.read_csv(ofm_estimate_template_file)
         self.ofm_df = self.ofm_df.merge(self.future_hhs_by_geoid10, how = 'left', left_on = 'GEOID10', right_index = True)
         self.ofm_df = self.ofm_df.merge(self.base_hhs_by_geoid10, how = 'left', left_on = 'GEOID10', right_index = True)
 
         # step B
-        self.lookup_df = pd.read_csv(lookup_file, low_memory = False)
-        self.hhs_by_parcel_df = pd.read_csv(os.path.join(working_folder_synpop, hhs_by_parcel))
-        self.cob_du_df = pd.read_csv(os.path.join(working_folder_synpop, cob_du_file))
+        self.lookup_df = None
+        self.hhs_by_parcel_df = None
+        self.cob_du_df = None
 
         # step C
-        self.hhs_df = pd.read_csv(os.path.join(working_folder_synpop, synthetic_households_file_name))
+        self.hhs_df = None
+
+        print('Logging file created: ', log_fname)
 
     def step_A_interpolate_hhps(self):
         """
-        Step A: interpolate hhs and persons by GEOID btw two horizon years.
+        Step A: interpolate hhs and persons by GEOID between two horizon years.
         This tool is to create an interpolated number of households and persons by blockgroup between two horizon years. It takes synthetic population in h5 format
         as input files, and parcel lookup table and ofm_estimate_template_file as well. 
 
@@ -73,9 +86,10 @@ class SynPop:
         """
         if target_year <= future_year and target_year >= base_year:
             # right between the bookends.
-            logging.info('interpolating...')
+            logging.info('Interpolating...')
         else:
-            logging.info('extropolating...')
+            logging.info('Extropolating...')
+        
             
         self.ofm_df.fillna(0, inplace = True)
         ratio = (target_year - base_year) * 1.0 / (future_year - base_year)
@@ -83,27 +97,33 @@ class SynPop:
         self.ofm_df['OFM_hhs'] = ((self.ofm_df['future_total_hhs'] - self.ofm_df['base_total_hhs']) * ratio + self.ofm_df['base_total_hhs']).round(0)
         self.ofm_df['OFM_persons'] = ((self.ofm_df['future_total_persons'] - self.ofm_df['base_total_persons']) * ratio + self.ofm_df['base_total_persons']).round(0)
 
-        logging.info('Interpolated total hhs: ' + str(self.ofm_df['OFM_hhs'].sum()))
-        logging.info('Interpolated total persons: ' + str(self.ofm_df['OFM_persons'].sum()))
+        logging.info(f"Estimated total hhs: {self.ofm_df['OFM_hhs'].sum():,.0f}")
+        logging.info(f"Estimated total persons: {self.ofm_df['OFM_persons'].sum():,.0f}")
         self.ofm_df[['GEOID10', 'OFM_groupquarters', 'OFM_hhs', 'OFM_persons']].to_csv(interploated_ofm_estimate_by_GEOID, index = False)
 
+        # summarize total households and persons by parcel id
         base_hhs_by_parcel = self.base_hh_df[['PSRC_ID', 'base_total_hhs', 'base_total_persons']].groupby('PSRC_ID').sum()
         future_hhs_by_parcel  = self.future_hh_df[['PSRC_ID', 'future_total_hhs', 'future_total_persons']].groupby('PSRC_ID').sum()
         target_hhs_by_parcel = pd.merge(base_hhs_by_parcel, future_hhs_by_parcel, on = 'PSRC_ID', how = 'outer')
         target_hhs_by_parcel.fillna(0, inplace = True)
+        # interpolate linearly hhs and persons by parcel id: hhs_target_per_parcel = hhs_base_per_parcel + delta_hhs_btw_base_and_future * ratio
         target_hhs_by_parcel['total_hhs_by_parcel'] = target_hhs_by_parcel['base_total_hhs'] + (target_hhs_by_parcel['future_total_hhs'] - target_hhs_by_parcel['base_total_hhs']) * ratio
         target_hhs_by_parcel['total_persons_by_parcel'] = target_hhs_by_parcel['base_total_persons'] + (target_hhs_by_parcel['future_total_persons'] - target_hhs_by_parcel['base_total_persons']) * ratio
+        # organize columns of the target table
         target_hhs_by_parcel.drop(['base_total_hhs', 'base_total_persons', 'future_total_hhs', 'future_total_persons'], axis = 1, inplace = True)
         target_hhs_by_parcel.reset_index(inplace = True)
+        # merge the target table into the parcel ids and BKRCAST taz ids
         target_hhs_by_parcel = self.parcel_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ', 'GEOID10']].merge(target_hhs_by_parcel[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel']], on = 'PSRC_ID', how = 'left')
         target_hhs_by_parcel.fillna(0, inplace= True)
         target_hhs_by_parcel.to_csv(hhs_by_parcel_filename, index = False)
+        logging.info(f'Estimated households by parcel exported: {hhs_by_parcel_filename}')
 
+        # calcuate the average number of persons per household by jurisdiction
         avg_person_per_hhs_df = target_hhs_by_parcel[['Jurisdiction', 'total_hhs_by_parcel', 'total_persons_by_parcel']].groupby('Jurisdiction').sum()
         avg_person_per_hhs_df['avg_persons_per_hh'] = avg_person_per_hhs_df['total_persons_by_parcel'] / avg_person_per_hhs_df['total_hhs_by_parcel']
         logging.info('%s' % avg_person_per_hhs_df)
 
-        logging.info('Generating households... ')
+        logging.info('\nGenerating households by TAZ... ')
         target_hhs_by_taz = target_hhs_by_parcel[['BKRCastTAZ', 'total_hhs_by_parcel']].groupby('BKRCastTAZ').sum().reset_index()
         target_hhs_by_taz = target_hhs_by_taz.loc[target_hhs_by_taz['total_hhs_by_parcel'] > 0]
         self.future_hh_df.drop(['PSRC_ID', 'future_total_persons', 'future_total_hhs', 'GEOID10', 'BKRCastTAZ'], axis = 1, inplace=True)
@@ -114,53 +134,70 @@ class SynPop:
             num_hhs_popsim = hhs_in_taz['hhexpfac'].sum()
             num_hhs = int(target_hhs_by_taz.loc[target_hhs_by_taz['BKRCastTAZ'] == taz, 'total_hhs_by_parcel'].tolist()[0])
             if num_hhs_popsim > num_hhs:
+                # sample num_hhs households
                 target_hhs_df = pd.concat([target_hhs_df, hhs_in_taz.sample(n = num_hhs)])
             else:
+                # sample num_hhs_popsim households
                 target_hhs_df = pd.concat([target_hhs_df, hhs_in_taz.sample(n = num_hhs_popsim)])
-        logging.info(f"total hhs: {target_hhs_df['hhexpfac'].sum()}")
+        logging.info(f"Total households: {target_hhs_df['hhexpfac'].sum():,.0f}")
+        logging.info(f"estimated_hhs_from_ofm - total_hhs_by_taz = {(self.ofm_df['OFM_hhs'].sum() - target_hhs_df['hhexpfac'].sum()):,.0f}")
 
-        logging.info('Generating persons...')
+        logging.info('\nGenerating persons...')
         future_persons_df = utility.h5_to_df(self.future_hdf_file, 'Person')
         target_persons_df = future_persons_df.loc[future_persons_df['hhno'].isin(target_hhs_df['hhno'])]
-        logging.info(f"total persons: {target_persons_df['psexpfac'].sum()}")
-        logging.info('Exporting .h5...')
+        logging.info(f"Total persons: {target_persons_df['psexpfac'].sum():,.0f}")
+        logging.info(f"estimated_persons_from_ofm - total_persons_by_taz = {(self.ofm_df['OFM_persons'].sum() - target_persons_df['psexpfac'].sum()):,.0f}")
+        logging.info('Exporting the estimated households and persons by TAZ into hdf5 format...')
         output_h5_file = h5py.File(final_output_pop_file, 'w')
         utility.df_to_h5(target_hhs_df, output_h5_file, 'Household')
         utility.df_to_h5(target_persons_df, output_h5_file, 'Person')
-
+        logging.info(f'Estimated household and persons by TAZ file exported: {output_h5_file}')
         output_h5_file.close()
-        utility.backupScripts(__file__, os.path.join(os.path.dirname(interploated_ofm_estimate_by_GEOID), os.path.basename(__file__)))
 
-        logging.info('Executing step A...done\n')
+        logging.info('\nBacking up the scripts for step A...')
+        os.makedirs(os.path.join(working_folder_synpop, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step A backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+
+        logging.info('\nExecuting step A...done. Households and persons estimation by GEOID is completed.\n')
 
     def step_B_distribute_hh2parcel(self):
         """
-        Step B: prepare hhs for base or future using KR oldTAZ COB parcel forecast.
-        This program will descide how many households each parcel should have.
-        It takes COB dwelling units forecast (cob_du_file), and Kirkland/Redmond's hhs forecast by trip model TAZ (hhs_control_total_by_TAZ) as local estimate
-        to replace parcel data in (hhs_by_parcel) in relevant jurisdictions. It will round number of hhs and persons from decimals to whole integer while keeping
-        hhs and person intact by BKRCastTAZ level. If no local estimate from Kirkland/Redmond is provided, set hhs_control_total_by_TAZ = ''.
+        Step B: prepare households for base or future year using KR oldTAZ COB parcel forecast.
+        This program will decide how many households each parcel should have.
+        It takes COB dwelling units forecast (cob_du_file), and Kirkland/Redmond's household forecast by trip model TAZ (hhs_control_total_by_TAZ) as local estimate
+        to replace parcel data in (hhs_by_parcel) in relevant jurisdictions. 
+        It will round number of household and persons from decimals to whole integer while keeping hhs and person intact by BKRCastTAZ level. 
+        If no local estimate from Kirkland/Redmond is provided, set hhs_control_total_by_TAZ = ''.
 
         This program can be used in producing base year or future year household inputs for populatitonsim and parcelizationV2.py.
 
-        # in ACS 2016 there is no hhs in Census block group 530619900020, but in PSRC's future hhs forecast there are. We need to relocate these households from parcels in 
-        # this blockgroup to parcels in block group 530610521042 while staying in the same BKRCastTAZ. 
+        # in ACS 2016 there is no hhs in Census block group 530619900020, but in PSRC's future hhs forecast there are. 
+        # We need to relocate these households from parcels in this blockgroup to parcels in block group 530610521042 
+        # while staying in the same BKRCastTAZ. 
 
-        Number of hhs per parcel in whole number is exported to external file. This file is used as guidance to allocate synthetic popualtion to parcel using parcelizationV2.py.
+        Number of hhs per parcel in whole number is exported to an external file. 
+        This file is used as guidance to allocate synthetic popualtion to parcel using parcelizationV2.py.
         A control file for populationsim is generated as well. 
         """
-        # make a deep copy of hhs_by_parcel_df
-        adjusted_hhs_by_parcel_df = self.hhs_by_parcel_df.copy()
+
+        self.lookup_df = pd.read_csv(lookup_file, low_memory = False)
+        self.hhs_by_parcel_df = pd.read_csv(hhs_by_parcel)
+        self.cob_du_df = pd.read_csv(os.path.join(working_folder_lu, cob_du_file))
+
+        # make a deep copy of hhs_by_parcel_df for number adjusting
+        adjusted_hhs_by_parcel_df = self.hhs_by_parcel_df.copy(deep=True)
         adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.rename(columns = {'total_hhs_by_parcel': 'adj_hhs_by_parcel', 'total_persons_by_parcel':'adj_persons_by_parcel'})
 
         if hhs_control_total_by_TAZ != '':
-            logging.info(f'A hh control file by TAZ is provided: {hhs_control_total_by_TAZ}')    
+            logging.info(f'A household control file by TAZ is provided: {hhs_control_total_by_TAZ}')
             hhs_control_total_by_TAZ_df = pd.read_csv(os.path.join(working_folder_synpop, hhs_control_total_by_TAZ))
             juris_list = hhs_control_total_by_TAZ_df['Jurisdiction'].unique()
             logging.info(f'The following jurisdictions are included: {juris_list}')    
 
             hhs_control_total_by_TAZ_df['total_persons'] = 0
             hhs_control_total_by_TAZ_df['total_hhs'] = 0
+            # calculate households and persons by the pre-defined occupancy rates
             hhs_control_total_by_TAZ_df.loc[hhs_control_total_by_TAZ_df['Jurisdiction'] == 'Kirkland', 'sfhhs'] = hhs_control_total_by_TAZ_df['SFU'] * sf_occupancy_rate_Kirkland
             hhs_control_total_by_TAZ_df.loc[hhs_control_total_by_TAZ_df['Jurisdiction'] == 'Kirkland', 'mfhhs'] = hhs_control_total_by_TAZ_df['MFU'] * mf_occupancy_rate_Kirkland
             hhs_control_total_by_TAZ_df.loc[hhs_control_total_by_TAZ_df['Jurisdiction'] == 'Kirkland', 'total_hhs'] = hhs_control_total_by_TAZ_df['sfhhs'] + hhs_control_total_by_TAZ_df['mfhhs']
@@ -171,7 +208,6 @@ class SynPop:
             hhs_control_total_by_TAZ_df.loc[hhs_control_total_by_TAZ_df['Jurisdiction'] == 'Redmond', 'total_hhs'] = hhs_control_total_by_TAZ_df['sfhhs'] + hhs_control_total_by_TAZ_df['mfhhs']
             hhs_control_total_by_TAZ_df.loc[hhs_control_total_by_TAZ_df['Jurisdiction'] == 'Redmond', 'total_persons'] = hhs_control_total_by_TAZ_df['sfhhs'] * avg_persons_per_sfhh_Redmond + hhs_control_total_by_TAZ_df['mfhhs'] * avg_persons_per_mfhh_Redmond
 
-            
             # get parcels within trip model Redmond and Kirkland TAZ (old taz system)
             parcels_in_trip_model_TAZ_df = pd.merge(self.hhs_by_parcel_df[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel']], self.lookup_df.loc[self.lookup_df['BKRTMTAZ'].notna(), ['PSRC_ID', 'Jurisdiction', 'BKRTMTAZ']], on = 'PSRC_ID', how = 'inner')
             parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_df[['BKRTMTAZ']], on  = 'BKRTMTAZ', how = 'inner')
@@ -213,15 +249,20 @@ class SynPop:
         else:
             logging.info('No household estimate is provided by Redmond and Kirkland. ')
 
-        # Replace hhs estimate with COB's forecast
+        # replace hhs estimate with COB's forecast
         # if some parcels are missing from the cob_du_df, export them for further investigation.
         cob_total_parcels_df = self.hhs_by_parcel_df.loc[self.hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE']
         cob_parcels_provided = self.cob_du_df.shape[0]
         if cob_total_parcels_df.shape[0] != cob_parcels_provided:
-            logging.info('COB forecast does not cover all parcels. Please cehck the missing parcel files for further investigation.')
+            if cob_total_parcels_df.shape[0] > cob_parcels_provided:
+                logging.warning('cob_total_parcels_df output from SynPop step A has a greater number of parcels')
+            elif cob_total_parcels_df.shape[0] < cob_parcels_provided:
+                logging.warning('cob_parcels_provided output from LandUse step 1 has a greater number of parcels')
+            logging.warning('COB forecast does not cover all parcels. Please cehck the missing parcel files for further investigation.\n')
             cob_missing_parcels_df = cob_total_parcels_df.loc[~cob_total_parcels_df['PSRC_ID'].isin(self.cob_du_df['PSRC_ID'])]
-            cob_missing_parcels_df.to_csv(os.path.join(working_folder_synpop, 'cob_missing_parcels.csv'), index = False)
-            logging.info(f'{cob_missing_parcels_df.shape[0]} parcels are missing in {cob_du_file}.')
+            cob_missing_parcels_df.to_csv(os.path.join(working_folder_synpop, f'cob_missing_parcels_{modeller_initial}_{version}.csv'), index = False)
+            logging.warning(f'{cob_missing_parcels_df.shape[0]} parcels are missing in {os.path.join(working_folder_lu, cob_du_file)}.')
+            logging.warning(f'Missing parcels are exported in {os.path.join(working_folder_synpop, f"cob_missing_parcels_{modeller_initial}_{version}.csv")}.')
 
         self.cob_du_df['sfhhs'] = self.cob_du_df['SFUnits'] * sf_occupancy_rate 
         self.cob_du_df['mfhhs'] = self.cob_du_df['MFUnits'] * mf_occupancy_rate
@@ -233,10 +274,11 @@ class SynPop:
         # reset hhs and persons in all COB parcels to zero. Only use local forecast.
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE', ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
-        # it is importand to use cobflag rather than Jurisdiction, because (hhs and persons in) parcels flagged by cobflag are provided by COB staff.
+        # it is important to use cobflag rather than Jurisdiction, because (hhs and persons in) parcels flagged by cobflag are provided by COB staff.
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['sfhhs'] + adjusted_hhs_by_parcel_df['mfhhs']
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df['sfpersons'] + adjusted_hhs_by_parcel_df['mfpersons']
 
+        ### Control Rounding
         ### hhs should not be fractions, so round the hhs to integer, controlled by BKRCastTAZ
         ### we will use the rounded hhs by parcel as guidance to allocate synthetic households. So controlled rounding is very important here, otherwise we will have more or less 
         ### total households due to rounding error, and we cannot allocate a fraction of a household.
@@ -404,6 +446,8 @@ class SynPop:
 
         # 05/01/2025
         # move I/O paths to config file
+
+        self.hhs_df = pd.read_csv(os.path.join(working_folder_synpop, synthetic_households_file_name))
 
         self.hhs_df['hhparcel'] = 0
         hhs_by_GEOID10 = self.hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()

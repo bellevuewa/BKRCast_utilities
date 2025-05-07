@@ -1,3 +1,4 @@
+import logging.handlers
 import os, sys
 sys.path.append(os.getcwd())
 
@@ -12,16 +13,27 @@ if not sys.warnoptions:
     import warnings
     warnings.simplefilter("ignore")
 
-logging.basicConfig(level=logging.INFO)
+log_fname = os.path.join(working_folder_lu, f"log_landuse_{modeller_initial}_{version}_step{step}_{timestamp}.log")
+logging.basicConfig(filename=log_fname, level=logging.INFO, format="%(asctime)s: %(levelname)s - %(message)s")
+# also log info to console
+console_handler = logging.StreamHandler()
+console_handler.setLevel(logging.INFO)
+logger = logging.getLogger()
+logger.addHandler(console_handler)
 
 
 class LandUse:
-    def __init__(self):
+    def __init__(self, run_step, backup_folder='backup'):
         """
         Initialize the class with data.
         :param data: Dictionary containing land use data.
         """
+        logging.info(f'Creating LandUse object...I/O {version} by modeller: {modeller_initial}')
         logging.info('Loading....')
+        self.run_step = run_step
+        self.backup_folder = backup_folder
+        logging.info(f'Running step {self.run_step}...')
+
         #####
         # Step 1
         #####
@@ -37,22 +49,21 @@ class LandUse:
         #####
         # Step 2
         #####
-        self.parcel_lookup_df = pd.read_csv(parcel_lookup_File_Name, sep  = ',', low_memory = False)
-        self.parcels_df = pd.read_csv(os.path.join(working_folder_lu, parcel_data_file_name), sep = ',')
+        self.parcels_df = None
 
         #####
         # Step 3
         #####
-        self.parcel_earlier_df = pd.read_csv(parcel_file_name_ealier, sep = ' ')
-        self.parcel_earlier_df.columns = [i.upper() for i in self.parcel_earlier_df.columns]
-        self.parcel_latter_df = pd.read_csv(parcel_file_name_latter, sep = ' ')
-        self.parcel_latter_df.columns = [i.upper() for i in self.parcel_latter_df.columns]
+        self.parcel_earlier_df = None
+        self.parcel_latter_df = None
 
         #####
         # Step 4
         #####
-        self.new_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, new_parcel_data_file_name), sep = ',', low_memory = False)
-        self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
+        self.new_parcel_data_df = None
+        self.original_parcel_data_df = None
+
+        print('Logging file created: ', log_fname)
 
     
     def step_1_prepare_land_use(self):
@@ -75,31 +86,39 @@ class LandUse:
         # move the paths into config.py
 
         logging.info('Exporting job file...')
+        # kc_df dataframe may already have ['PSRC_ID', 'JURIS', 'BKRCASTTAZ'], the merge below just to ensure these features match with our BKRCast model
+        # TODO: why below merging with inner instead of left, but for sqft data is with left instead of inner?
         updated_jobs_kc = self.kc_df[jobs_columns_List].merge(self.lookup_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ']], left_on = 'PSRC_ID', right_on = 'PSRC_ID', how = 'inner')
         updated_jobs_kc = updated_jobs_kc.merge(self.subarea_df[['BKRCastTAZ', 'Subarea', 'SubareaName']], left_on = 'BKRCastTAZ', right_on = 'BKRCastTAZ', how = 'left')
         if subset_area != []:
             updated_jobs_kc = updated_jobs_kc[updated_jobs_kc['Jurisdiction'].isin(subset_area)]
-        updated_jobs_kc['EMPTOT_P'] = updated_jobs_kc[job_cat_list].sum(axis = 1)    
+        # calculate sum of the worker each parcel; EMPTOT_P: the total number of employees working on a parcel
+        updated_jobs_kc['EMPTOT_P'] = updated_jobs_kc[job_cat_list].sum(axis = 1)
         updated_jobs_kc.to_csv(os.path.join(working_folder_lu, kc_job_file), sep = ',', index = False)
 
         if SQFT_data_available: 
             logging.info('Exporting sqft file...')
+            # kc_df dataframe may already have ['PSRC_ID', 'JURIS', 'BKRCASTTAZ'], the merge below just to ensure these features match with our BKRCast model
             updated_sqft_kc = self.kc_df[sqft_columns_list].merge(self.lookup_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ']], left_on = 'PSRC_ID', right_on = 'PSRC_ID', how = 'left')
             updated_sqft_kc = updated_sqft_kc.merge(self.subarea_df[['BKRCastTAZ', 'Subarea', 'SubareaName']], left_on = 'BKRCastTAZ', right_on = 'BKRCastTAZ', how = 'left')
             if subset_area != []:
                 updated_sqft_kc = updated_sqft_kc[updated_sqft_kc['Jurisdiction'].isin(subset_area)]
             updated_sqft_kc['SQFT_TOT'] = updated_sqft_kc[sqft_cat_list].sum(axis = 1)       
             updated_sqft_kc.to_csv(os.path.join(working_folder_lu, kc_SQFT_file), sep = ',', index = False)
+            logging.info(f'Sqft file exported: {os.path.join(working_folder_lu, kc_SQFT_file)}')
 
         logging.info('Exporting King County dwelling units...')
+        # TODO: why below merging with inner instead of left, but for sqft data (above) is with left instead of inner?
         du_kc = self.kc_df[dwellingunits_list].merge(self.lookup_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ']], left_on = 'PSRC_ID', right_on = 'PSRC_ID', how = 'inner')
         du_kc = du_kc.merge(self.subarea_df[['BKRCastTAZ', 'Subarea', 'SubareaName']], left_on = 'BKRCastTAZ', right_on = 'BKRCastTAZ', how = 'left')
         if subset_area != []:
             du_kc = du_kc[du_kc['Jurisdiction'].isin(subset_area)]
         du_kc.to_csv(os.path.join(working_folder_lu, kc_du_file), sep  = ',', index = False)
+        logging.info(f'King County dwelling units file exported: {os.path.join(working_folder_lu, kc_du_file)}')
 
         du_cob = du_kc[du_kc['Jurisdiction'] == 'BELLEVUE']
         du_cob.to_csv(os.path.join(working_folder_lu, cob_du_file), sep = ',', index = False)
+        logging.info(f'Bellevue dwelling units file exported: {os.path.join(working_folder_lu, cob_du_file)}')
 
         error_parcels = self.kc_df[~self.kc_df['PSRC_ID'].isin(self.lookup_df['PSRC_ID'])]
         error_parcels.to_csv(os.path.join(working_folder_lu, error_parcel_file), sep = ',', index = False)
@@ -107,8 +126,11 @@ class LandUse:
             logging.warning('Exporting error file...')
             logging.warning(f'Please check the error file first: {os.path.join(working_folder_lu, error_parcel_file)}')
 
-        utility.backupScripts(__file__, os.path.join(working_folder_lu, os.path.basename(__file__)))
-        logging.info('Step 1 done.\n')
+        logging.info('Backing up the scripts for step 1...')
+        os.makedirs(os.path.join(working_folder_lu, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step 1 backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+        logging.info('Step 1 done. Land use data has been prepared.\n')
 
     def step_2_validate_input_parcels(self):
         """
@@ -122,38 +144,41 @@ class LandUse:
 
         # 5/1/2025
         # move the paths into config.py
-        # remove the year of 2014, replace it with year_parcel
+        # remove specifying year "2014", replace it with year_parcel
 
+        self.parcels_df = pd.read_csv(os.path.join(working_folder_lu, parcel_data_file_name), sep = ',')
+        # check if the parcel data has duplicated PSRC ids
         duplicated_parcels_df = self.parcels_df[self.parcels_df.duplicated('PSRC_ID', keep = False)]
         if duplicated_parcels_df.shape[0] != 0:
-            logging.info('Some parcels have duplicated PSRC_ID. See duplicated_parcels.csv for details.')
-            duplicated_parcels_df.to_csv(os.path.join(working_folder_lu, 'duplicated_parcels.csv'))
+            duplicated_parcels_df.to_csv(os.path.join(working_folder_lu, f'duplicated_parcels_{modeller_initial}_{version}.csv'))
+            logging.warning(f"Some parcels have duplicated PSRC_ID. See {os.path.join(working_folder_lu, f'duplicated_parcels_{modeller_initial}_{version}.csv')} for details.")
             # export cleaned copy, only keep the first one if duplicated.
             self.parcels_df = self.parcels_df[~self.parcels_df.duplicated('PSRC_ID', keep = 'first')]
             self.parcels_df.to_csv(os.path.join(working_folder_lu, 'cleaned_' + parcel_data_file_name), index = False)
         else:
-            logging.info('No parcels with duplicated PSRC_ID is found. ')
+            logging.info('No parcel with duplicated PSRC_ID is found. ')
 
         parcels_df = self.parcels_df.groupby('PSRC_ID').sum()
 
-        # export parcels that are given in the parcel_data_file_name but are not included in parcel_lookup_File_Name
-        not_in_year_PSRC_parcels = parcels_df.loc[~parcels_df.index.isin(self.parcel_lookup_df['PSRC_ID'])]
+        # check and export parcels that are given in the parcel_data_file_name but are not included in lookup_df
+        not_in_year_PSRC_parcels = parcels_df.loc[~parcels_df.index.isin(self.lookup_df['PSRC_ID'])]
         if not_in_year_PSRC_parcels.empty == False:
-            not_in_year_PSRC_parcels.to_csv(os.path.join(working_folder_lu, f'parcels_not_in_{year_parcel}PSRC_parcels.csv'))
+            not_in_year_PSRC_parcels.to_csv(os.path.join(working_folder_lu, f'parcels_not_in_{year_parcel}_PSRC_parcels_{modeller_initial}_{version}.csv'))
+            logging.warning(f"Some parcels are not within parcel lookup file, See {os.path.join(working_folder_lu, f'parcels_not_in_{year_parcel}_PSRC_parcels_{modeller_initial}_{version}.csv')} for details.")
         else:
             logging.info('All parcels given are within parcel lookup file.')
 
         if Jurisdiction != None:
-            selected_parcels_lookup_df = self.parcel_lookup_df.loc[self.parcel_lookup_df['Jurisdiction'] == Jurisdiction]
+            selected_parcels_lookup_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == Jurisdiction]
         else:
-            selected_parcels_lookup_df = self.parcel_lookup_df
+            selected_parcels_lookup_df = self.lookup_df
 
-        # export parcels that are in parcel_lookup_File_Name but not in the parcel_data_file_name.
+        # check and export parcels that are in lookup_df but not in the parcel_data_file_name.
         not_in_given_parcel_dataset = selected_parcels_lookup_df.loc[~selected_parcels_lookup_df['PSRC_ID'].isin(parcels_df.index)]
         if not_in_given_parcel_dataset.empty == False:
-            not_in_given_parcel_dataset.to_csv(os.path.join(working_folder_lu, f'{year_parcel}PSRC_parcels_not_in_given_parcel_dataset.csv'))
-            logging.warning(f'Some {year_parcel} PSRC parcels are missing from the given parcel dataset.')
-            logging.warning(f"Go to {os.path.join(working_folder_lu, f'{year_parcel}PSRC_parcels_not_in_given_parcel_dataset.csv')} and check the output error file for details. ")
+            not_in_given_parcel_dataset.to_csv(os.path.join(working_folder_lu, f'{year_parcel}_PSRC_parcels_not_in_given_parcel_data_{modeller_initial}_{version}.csv'))
+            logging.warning(f'Some {year_parcel} PSRC parcels are missing from the given parcel data_{modeller_initial}_{version}.')
+            logging.warning(f"Go to {os.path.join(working_folder_lu, f'{year_parcel}_PSRC_parcels_not_in_given_parcel_data_{modeller_initial}_{version}.csv')} and check the output error file for details. ")
         else:
             logging.info(f'No {year_parcel} PSRC parcels are missing in the given parcel dataset.')
 
@@ -169,6 +194,11 @@ class LandUse:
             Create a new parcel file by interpolating employment bewteen two parcel files. The newly created parcel file has other non-job values
             from parcel_file_name_ealier.
         """
+        self.parcel_earlier_df = pd.read_csv(parcel_file_name_ealier, sep = ' ')
+        self.parcel_earlier_df.columns = [i.upper() for i in self.parcel_earlier_df.columns]
+        self.parcel_latter_df = pd.read_csv(parcel_file_name_latter, sep = ' ')
+        self.parcel_latter_df.columns = [i.upper() for i in self.parcel_latter_df.columns]
+
         columns = job_cat_list
         columns.append('PARCELID')
         job_std = copy.copy(job_cat_list)
@@ -225,6 +255,9 @@ class LandUse:
 
         # 05/01/2025
         # move the paths into config.py
+
+        self.new_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, new_parcel_data_file_name), sep = ',', low_memory = False)
+        self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
 
         logging.info('Processing Bellevue jobs...')
         full_bellevue_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == 'BELLEVUE']

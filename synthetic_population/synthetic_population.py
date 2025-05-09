@@ -32,6 +32,41 @@ class SynPop:
         logging.info(f'Running step {self.run_step}...\n')
     
         # step A
+        self.future_hdf_file = None
+        self.base_hdf_file = None
+
+        self.future_hh_df = None
+        self.base_hh_df = None
+
+        self.parcel_df = None
+        self.ofm_df = None
+
+        # step B
+        self.lookup_df = None
+        self.hhs_by_parcel_df = None
+        self.cob_du_df = None
+
+        # step C
+        self.hhs_df = None
+
+        print('Logging file created: ', log_fname)
+
+    def step_A_interpolate_hhps(self):
+        """
+        Step A: interpolate hhs and persons by GEOID between two horizon years.
+        This tool is to create an interpolated number of households and persons by blockgroup between two horizon years. It takes synthetic population in h5 format
+        as input files, and parcel lookup table and ofm_estimate_template_file as well. 
+
+        The output file is an input to generate_COB_local_hhs_estimate.py.
+
+        03/03/2022
+        now it also exports total_hhs_by_parcel and total_persons_by_parcel to file.   Both households and persons have decimal points. 
+        The output file is an input to Prepare_Hhs_for_future_using_KR_oldTAZ_COB_parcel_forecast.py
+
+        05/01/2025
+        Move the paths to config.py
+        """
+        # load inputs
         self.future_hdf_file = h5py.File(future_year_synpop_file, "r")
         self.base_hdf_file = h5py.File(base_year_synpop_file, "r")
 
@@ -59,31 +94,7 @@ class SynPop:
         self.ofm_df = self.ofm_df.merge(self.future_hhs_by_geoid10, how = 'left', left_on = 'GEOID10', right_index = True)
         self.ofm_df = self.ofm_df.merge(self.base_hhs_by_geoid10, how = 'left', left_on = 'GEOID10', right_index = True)
 
-        # step B
-        self.lookup_df = None
-        self.hhs_by_parcel_df = None
-        self.cob_du_df = None
-
-        # step C
-        self.hhs_df = None
-
-        print('Logging file created: ', log_fname)
-
-    def step_A_interpolate_hhps(self):
-        """
-        Step A: interpolate hhs and persons by GEOID between two horizon years.
-        This tool is to create an interpolated number of households and persons by blockgroup between two horizon years. It takes synthetic population in h5 format
-        as input files, and parcel lookup table and ofm_estimate_template_file as well. 
-
-        The output file is an input to generate_COB_local_hhs_estimate.py.
-
-        03/03/2022
-        now it also exports total_hhs_by_parcel and total_persons_by_parcel to file.   Both households and persons have decimal points. 
-        The output file is an input to Prepare_Hhs_for_future_using_KR_oldTAZ_COB_parcel_forecast.py
-
-        05/01/2025
-        Move the paths to config.py
-        """
+        # start processing
         if target_year <= future_year and target_year >= base_year:
             # right between the bookends.
             logging.info('Interpolating...')
@@ -157,7 +168,7 @@ class SynPop:
         logging.info('\nBacking up the scripts for step A...')
         os.makedirs(os.path.join(working_folder_synpop, self.backup_folder, version), exist_ok=True)
         utility.backupScripts(__file__, os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__)))
-        logging.info(f'Scripts for step A backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+        logging.info(f'Scripts for step A backup exported: {os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__))}')
 
         logging.info('\nExecuting step A...done. Households and persons estimation by GEOID is completed.\n')
 
@@ -254,15 +265,31 @@ class SynPop:
         cob_total_parcels_df = self.hhs_by_parcel_df.loc[self.hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE']
         cob_parcels_provided = self.cob_du_df.shape[0]
         if cob_total_parcels_df.shape[0] != cob_parcels_provided:
+            missing_parcels = set()
+            missing_fname = ''
             if cob_total_parcels_df.shape[0] > cob_parcels_provided:
-                logging.warning('cob_total_parcels_df output from SynPop step A has a greater number of parcels')
+                logging.info('cob_total_parcels_df output from SynPop step A has a larger number of parcels')
+                cob_missing_parcels_df = cob_total_parcels_df.loc[~cob_total_parcels_df['PSRC_ID'].isin(self.cob_du_df['PSRC_ID'])]
+                missing_fname = f'cob_missing_parcels_{modeller_initial}_{version}'
+                cob_missing_parcels_df.to_csv(os.path.join(working_folder_synpop, f'{missing_fname}.csv'), index = False)
+                logging.warning(f'{cob_missing_parcels_df.shape[0]} parcels are missing in {os.path.join(working_folder_lu, cob_du_file)}.')
+                missing_parcels = list(set(cob_missing_parcels_df['PSRC_ID']))
             elif cob_total_parcels_df.shape[0] < cob_parcels_provided:
-                logging.warning('cob_parcels_provided output from LandUse step 1 has a greater number of parcels')
-            logging.warning('COB forecast does not cover all parcels. Please cehck the missing parcel files for further investigation.\n')
-            cob_missing_parcels_df = cob_total_parcels_df.loc[~cob_total_parcels_df['PSRC_ID'].isin(self.cob_du_df['PSRC_ID'])]
-            cob_missing_parcels_df.to_csv(os.path.join(working_folder_synpop, f'cob_missing_parcels_{modeller_initial}_{version}.csv'), index = False)
-            logging.warning(f'{cob_missing_parcels_df.shape[0]} parcels are missing in {os.path.join(working_folder_lu, cob_du_file)}.')
-            logging.warning(f'Missing parcels are exported in {os.path.join(working_folder_synpop, f"cob_missing_parcels_{modeller_initial}_{version}.csv")}.')
+                logging.info('cob_parcels_provided output from LandUse step 1 has a larger number of parcels')
+                lookup_missing_parcels_df = self.cob_du_df.loc[~self.cob_du_df['PSRC_ID'].isin(cob_total_parcels_df['PSRC_ID'])]
+                missing_fname = f'lookup_missing_parcels_{modeller_initial}_{version}'
+                lookup_missing_parcels_df.to_csv(os.path.join(working_folder_synpop, f'{missing_fname}.csv'), index = False)
+                logging.warning(f'{lookup_missing_parcels_df.shape[0]} parcels are missing in {os.path.join(working_folder_lu, hhs_by_parcel)}.')
+                missing_parcels = list(set(cob_missing_parcels_df['PSRC_ID']))
+            with open(f'{os.path.join(working_folder_lu, missing_fname)}.exp', 'w') as f:
+                missing = ''
+                for miss in missing_parcels:
+                    missing += f',{miss}'
+                missing = missing.lstrip(',')
+                f.write(f'PSRC_ID IN ({missing})')
+            logging.info('The missing parcel ids into a csv file and a exp file exported for GIS investigation.\n')
+            logging.warning(f'Missing parcels are exported in {os.path.join(working_folder_synpop, f"{missing_fname}.csv and .exp")}.')
+            logging.warning('Please cehck the missing parcel files for further investigation.')
 
         self.cob_du_df['sfhhs'] = self.cob_du_df['SFUnits'] * sf_occupancy_rate 
         self.cob_du_df['mfhhs'] = self.cob_du_df['MFUnits'] * mf_occupancy_rate
@@ -286,37 +313,40 @@ class SynPop:
         ### to get correct number of persons by block group, instead of doing controlled rounding, we simply summarize persons by block group before controlled rounding on hhs.
         adj_persons_by_GEOID10 = adjusted_hhs_by_parcel_df[['GEOID10', 'adj_persons_by_parcel']].groupby('GEOID10').sum()
         total_hhs_before_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
+        logging.info(f'Total number of households before rounding: {total_hhs_before_rounding:,.2f}\n')
 
         logging.info('Rounding households to integer. Controlled by BKRCastTAZ subtotal....')
-        # in ACS 2016 there is no hhs in Census block group 530619900020, but in PSRC's future hhs forecast there are. We need to relocate these households from parcels in this blockgroup to  
-        # parcels in block group 530610521042 while staying in the same BKRCastTAZ. 
-        special_parcels_flag = (adjusted_hhs_by_parcel_df['GEOID10'] == 530619900020) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] > 0)
-        special_hhs_by_TAZ = adjusted_hhs_by_parcel_df.loc[special_parcels_flag, ['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby('BKRCastTAZ').sum().reset_index()
-        # move all persons in 530619900020 to 530610521042
-        adj_persons_by_GEOID10.loc[530610521042, 'adj_persons_by_parcel'] += adj_persons_by_GEOID10.loc[530619900020, 'adj_persons_by_parcel']
+        # check if this 2016 file is 'acecon0403.csv'
+        if popsim_control_file == 'acecon0403.csv':
+            # in ACS 2016 there is no hhs in Census block group 530619900020, but in PSRC's future hhs forecast there are. 
+            # We need to relocate these households from parcels in this blockgroup to  
+            # parcels in block group 530610521042 while staying in the same BKRCastTAZ. 
+            special_parcels_flag = (adjusted_hhs_by_parcel_df['GEOID10'] == 530619900020) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] > 0)
+            special_hhs_by_TAZ = adjusted_hhs_by_parcel_df.loc[special_parcels_flag, ['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby('BKRCastTAZ').sum().reset_index()
+            # move all persons in 530619900020 to 530610521042
+            adj_persons_by_GEOID10.loc[530610521042, 'adj_persons_by_parcel'] += adj_persons_by_GEOID10.loc[530619900020, 'adj_persons_by_parcel']
 
-
-        # move hhs from parcels in 530619900020 to parcels in 530610521042 && same TAZ
-        for row in special_hhs_by_TAZ.itertuples():
-            mf_parcels_flag = (adjusted_hhs_by_parcel_df['GEOID10'] == 530610521042) & (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == row.BKRCastTAZ) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] > 1)
-            mf_parcels_count = adjusted_hhs_by_parcel_df.loc[mf_parcels_flag].shape[0]
-            if mf_parcels_count > row.adj_hhs_by_parcel:
-                selected_ids = adjusted_hhs_by_parcel_df.sample(n = int(row.adj_hhs_by_parcel))['PSRC_ID']
-                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + 1
-            else:
-                increase = math.floor(row.adj_hhs_by_parcel / mf_parcels_count)
-                adjusted_hhs_by_parcel_df.loc[mf_parcels_flag, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + increase
-                diff = row.adj_hhs_by_parcel - increase * mf_parcels_count
-                selected_ids = adjusted_hhs_by_parcel_df.sample(n = 1)['PSRC_ID']
-                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + diff
-            adjusted_hhs_by_parcel_df.loc[special_parcels_flag, ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
-
+            # move hhs from parcels in 530619900020 to parcels in 530610521042 && same TAZ
+            for row in special_hhs_by_TAZ.itertuples():
+                mf_parcels_flag = (adjusted_hhs_by_parcel_df['GEOID10'] == 530610521042) & (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == row.BKRCastTAZ) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] > 1)
+                mf_parcels_count = adjusted_hhs_by_parcel_df.loc[mf_parcels_flag].shape[0]
+                if mf_parcels_count > row.adj_hhs_by_parcel:
+                    selected_ids = adjusted_hhs_by_parcel_df.sample(n = int(row.adj_hhs_by_parcel))['PSRC_ID']
+                    adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + 1
+                else:
+                    increase = math.floor(row.adj_hhs_by_parcel / mf_parcels_count)
+                    adjusted_hhs_by_parcel_df.loc[mf_parcels_flag, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + increase
+                    diff = row.adj_hhs_by_parcel - increase * mf_parcels_count
+                    selected_ids = adjusted_hhs_by_parcel_df.sample(n = 1)['PSRC_ID']
+                    adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + diff
+                adjusted_hhs_by_parcel_df.loc[special_parcels_flag, ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
         adj_hhs_by_BKRCastTAZ = adjusted_hhs_by_parcel_df[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby('BKRCastTAZ').sum().round(0).astype(int)
         controlled_taz_hhs = adj_hhs_by_BKRCastTAZ.reset_index().to_dict('records')
 
         for record in controlled_taz_hhs:
-            adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].round(0)
+            condition = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'])
+            adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'].round(0)
             subtotal = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'].sum()
             diff = subtotal - record['adj_hhs_by_parcel']
             mf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] >= 2)
@@ -324,24 +354,26 @@ class SynPop:
             mf_parcels_count = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].shape[0]
             sf_parcels_count = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].shape[0]
             if diff > 0: 
-                # too many hhs in this TAZ after rounding. need to bring down subtotal 
-                # start from mf parcels. 
+                # too many hhs in this TAZ after rounding. 
+                # need to bring down subtotal start from mf parcels. 
                 if mf_parcels_count > 0:
                     if mf_parcels_count < diff:
                         adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] - 1
                         diff = diff - mf_parcels_count
-                    else: # number of mf parcels are more than diff,  randomly pick diff number of mf parcels and reduce adj_hhs_by_parcel in each parcel  by 1
+                    else: # number of mf parcels are more than diff, randomly pick diff number of mf parcels and reduce adj_hhs_by_parcel in each parcel by 1
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(diff))['PSRC_ID']
-                        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] - 1
+                        condition = (adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids))
+                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] - 1
                         diff = 0
                 # if rounding issue is not resolved yet, deal with it in sf parcel
                 if (diff > 0) and (sf_parcels_count > 0):
                     if sf_parcels_count < diff: 
-                        adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] - 1
+                        adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] - 1
                         diff = diff - sf_parcels_count
                     else: # number of sf parcels are more than diff, randomly pick diff number of sf parcels and reduce adj_hhs_by_parcel in each by 1 (set to zero)
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(diff))['PSRC_ID']
-                        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] - 1
+                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] - 1
                         diff = 0
                 # last option, if rounding issue is still not resolved, 
                 if diff > 0:
@@ -352,38 +384,44 @@ class SynPop:
                     # evenly distribute diff to all mf parcel, then the remaining to a ramdomly selected one
                     if mf_parcels_count < abs(diff):
                         increase = math.floor(abs(diff) / mf_parcels_count)
-                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + increase
+                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] + increase
                         diff = diff + increase * mf_parcels_count
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = 1)['PSRC_ID']
-                        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + abs(diff)
+                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
                         diff = diff + abs(diff)
                     else:
+                        # randomly select parcel to increase the number of households
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
-                        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + 1
+                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + 1
                         diff = diff + abs(diff)
                         
                 else: # if no mf parcel is available, add diff to sf parcels
                     if sf_parcels_count > 0:
                         if sf_parcels_count < abs(diff):
                             increase = math.floor(abs(diff) / sf_parcels_count)
-                            adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + increase
+                            adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] + increase
                             diff = diff + increase * sf_parcels_count
                             selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = 1)['PSRC_ID']
-                            adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + abs(diff)
+                            condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                            adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
                             diff = diff + abs(diff)
                         else:
                             selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
-                            adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + 1
+                            condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                            adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + 1
                             diff = diff + abs(diff)
                     else:  # last option, add diff to a ramdomly selected parcel
                         applicable_parcels_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'])
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[applicable_parcels_flags].sample(n = 1)['PSRC_ID']
-                        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + abs(diff)
+                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
 
         adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].astype(int)
         total_hhs_after_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
         logging.info('Controlled rounding is complete. ')
-        logging.info(f'Total hhs before rounding: {total_hhs_before_rounding}, after: {total_hhs_after_rounding}')
+        logging.info(f'\nTotal hhs before rounding: {total_hhs_before_rounding:,.2f}, after: {total_hhs_after_rounding:,.0f}\n')
 
         if  hhs_control_total_by_TAZ != '':
             # export adjusted hhs by parcel to file
@@ -391,9 +429,11 @@ class SynPop:
         else:
             # export adjusted hhs by parcel to file
             adjusted_hhs_by_parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'adj_hhs_by_parcel']].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file), index = False)
+        logging.info(f'Rounded number of households by parcel file exported: {os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file)}')
                 
-        sum_hhs_by_jurisdiction = adjusted_hhs_by_parcel_df[['Jurisdiction', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']] .groupby('Jurisdiction').sum()
+        sum_hhs_by_jurisdiction = adjusted_hhs_by_parcel_df[['Jurisdiction', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby('Jurisdiction').sum()
         sum_hhs_by_jurisdiction.to_csv(os.path.join(working_folder_synpop,  summary_by_jurisdiction_filename))
+        logging.info(f'Rounded number of households by jurisdiction file exported: {os.path.join(working_folder_synpop, summary_by_jurisdiction_filename)}\n')
 
         ### Create control file for PopulationSim
         popsim_control_df = pd.read_csv(os.path.join(working_folder_synpop, popsim_control_file), sep = ',')
@@ -403,9 +443,10 @@ class SynPop:
         popsim_control_df = popsim_control_df.merge(hhs_by_geoid10_df, left_on = 'block_group_id', right_on = 'GEOID10', how = 'left')
         error_blkgrps_df = popsim_control_df.loc[popsim_control_df.isna().any(axis = 1)]
         if error_blkgrps_df.shape[0] > 0:
-            logging.info('Some blockgroups are missing values. Please check the error_census_blockgroup.csv')
-            logging.info('The missing values are all replaced with zeros.')
-            error_blkgrps_df.to_csv(os.path.join(working_folder_synpop, 'error_census_blockgroup.csv'), index = False)
+            logging.warning(f'Some blockgroups are missing values.')
+            logging.warning(f"Please check {os.path.join(working_folder_synpop, f'error_census_blockgroup_{modeller_initial}_{version}.csv')} for more details.")
+            logging.warning('The missing values are all replaced with zeros.\n')
+            error_blkgrps_df.to_csv(os.path.join(working_folder_synpop, f'error_census_blockgroup_{modeller_initial}_{version}.csv'), index = False)
 
         popsim_control_df.fillna(0, inplace = True)
         popsim_control_df['hh_bg_weight'] = popsim_control_df['adj_hhs_by_parcel'].round(0).astype(int)
@@ -414,29 +455,32 @@ class SynPop:
         popsim_control_df['pers_tract_weight'] = popsim_control_df['adj_persons_by_parcel'].round(0).astype(int)
         popsim_control_df.drop(hhs_by_geoid10_df.columns, axis = 1, inplace = True)
         popsim_control_df.to_csv(os.path.join(working_folder_synpop, popsim_control_output_file), index = False)
+        logging.info(f'PopulationSim control file exported: {os.path.join(working_folder_synpop, popsim_control_output_file)}.')
 
         total_hhs = popsim_control_df['hh_bg_weight'].sum()
         total_persons = popsim_control_df['pers_bg_weight'].sum()
-        logging.info(f'{total_hhs} households, {total_persons} persons are in the control file.')
+        logging.info(f'{total_hhs:,.0f} households, {total_persons:,.0f} persons are exported in the control file.\n')
 
         ### generate other support files for parcelization
-        bel_parcels_du_df = cob_total_parcels_df[['PSRC_ID']].merge(self.cob_du_df[['PSRC_ID', 'SFUnits', 'MFUnits']], on = 'PSRC_ID', how = 'left').fillna(0)
-
         bel_parcels_hhs_df = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE', ['PSRC_ID', 'adj_hhs_by_parcel', 'sfhhs', 'mfhhs', 'adj_persons_by_parcel', 'Jurisdiction', 'GEOID10']]
         bel_parcels_hhs_df.rename(columns = {'adj_hhs_by_parcel':'total_hhs', 'adj_persons_by_parcel':'total_persons'}, inplace = True)
         bel_parcels_hhs_df.to_csv(os.path.join(working_folder_synpop, parcels_for_allocation_filename), index = False)
 
-        utility.backupScripts(__file__, os.path.join(working_folder_synpop, os.path.basename(__file__)))
+        logging.info('\nBacking up the scripts for step B...')
+        os.makedirs(os.path.join(working_folder_synpop, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step B backup exported: {os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__))}')
 
-        logging.info('Executing step B...done.\n')
+        logging.info('Executing step B...done. Preparing households for base or future year using KR oldTAZ COB parcel forecast is completed.\n')
 
     def step_C_parcelization(self):
         """
         Step C: parcelizationV3.py
-        This program takes synthetic households and synthetic persons( from PopulationSim) as inputs,
-        and allocates them to parcels, under the guidance of parcels_for_allocation_filename which is an output file from 
-        Prepare_Hhs_for_future_using_KR_oldTAZ_COB_parcel_forecast.py or prepare_hhs_for_baseyear_using_ofm.py. It also reformats household and person
-        data columns to match BKRCast input requirement. The output, h5_file_name, can be directly loaded into BKRCast.
+        This program takes synthetic households and synthetic persons (from PopulationSim) as inputs,
+        and allocates them to parcels, under the guidance of adjusted_hhs_by_parcel_file which is an output file from 
+        Prepare_Hhs_for_future_using_KR_oldTAZ_COB_parcel_forecast.py or prepare_hhs_for_baseyear_using_ofm.py. 
+        It also reformats household and person data columns to match BKRCast input requirement. 
+        The output, h5_file_name, can be directly loaded into BKRCast.
 
         Number of households per parcel in synthetic population should be consistent with the parcel file. It can be done by calling 
         sync_population_parcel.py. 
@@ -452,26 +496,28 @@ class SynPop:
         self.hhs_df['hhparcel'] = 0
         hhs_by_GEOID10 = self.hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()
 
-        parcels_for_allocation_df = pd.read_csv(os.path.join(working_folder_synpop, parcels_for_allocation_filename))
+        parcels_for_allocation_df = pd.read_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file))
         # remove any blockgroup ID is Nan.
         all_blcgrp_ids = self.hhs_df['block_group_id'].unique()
         mask = np.isnan(all_blcgrp_ids)
         all_blcgrp_ids = sorted(all_blcgrp_ids[~mask])
 
-        # special treatment on GEOID10 530619900020. Since in 2016 ACS no hhs lived in this census blockgroup, when creating popsim control file
-        # we move all hhs in this blockgroup to 530610521042. We need to do the same thing when we allocate hhs to parcels.
-        parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == 530619900020) & (parcels_for_allocation_df['total_hhs'] > 0), 'GEOID10'] = 530610521042
+        if popsim_control_file == 'acecon0403.csv':
+            # special treatment on GEOID10 530619900020. Since in 2016 ACS no hhs lived in this census blockgroup, when creating popsim control file
+            # we move all hhs in this blockgroup to 530610521042. We need to do the same thing when we allocate hhs to parcels.
+            parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == 530619900020) & (parcels_for_allocation_df['total_hhs'] > 0), 'GEOID10'] = 530610521042
 
         hhs_by_blkgrp_popsim = self.hhs_df.groupby('block_group_id')[['hhexpfac', 'hhsize']].sum()
         hhs_by_blkgrp_parcel = parcels_for_allocation_df.groupby('GEOID10')[['total_hhs']].sum()
         final_hhs_df = pd.DataFrame()
 
+        logging.info(f"Allocating households to parcels at each census block group...\nIt may take a while...\n")
         for blcgrpid in all_blcgrp_ids:
             # if (hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac'] != hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']):
             #     logging.info(f"GEOID10 {blcgrpid}:  popsim: {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']}, parcel: {hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']}")
             #     logging.info('popsim should equal parcel. You need to fix this issue before moving forward.')
             #     exit(-1)
-            num_parcels = 0 
+            num_parcels = 0
             num_hhs = 0
             parcels_in_GEOID10_df = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)]
             subtotal_parcels = parcels_in_GEOID10_df.shape[0]
@@ -490,72 +536,81 @@ class SynPop:
                 num_parcels += 1
                 j_start_index += int(numHhs)
 
-            ## take care some unallocated hhs here
-            unallocated_num = numhhs_avail_for_alloc - control_total
+            ## take care the remaining unallocated hhs
+            # numhhs_avail_for_alloc is the number of households waiting for being assigned a parcel id;
+            # control_total is the total households where each household has a parcel id
+            unallocated_num = numhhs_avail_for_alloc - control_total  # number of households that have not been assigned a parcel id yet
             if unallocated_num > 0:
                 for j in range(int(unallocated_num)):
                     if (j + j_start_index) < selected_hhs_df.shape[0]:
-                        random_picked_pids = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)].sample(n = unallocated_num)['PSRC_ID'].to_numpy()
+                        # randomly pick the corresponding parcel ids to those households
+                        parcels_for_allocation_this_cbg = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)]
+                        assert len(parcels_for_allocation_this_cbg) >= unallocated_num, \
+                            "Not enough households in the allocation file for allocating synthetic households.\n \
+                            Is your synthetic household file is generated through PopulationSim based on the adjusted households from the previous step?"
+                        random_picked_pids = parcels_for_allocation_this_cbg.sample(n = unallocated_num)['PSRC_ID'].to_numpy()
                         selected_hhs_df.iat[j + j_start_index, index_hhparcel] = random_picked_pids[j] 
 
             final_hhs_df = pd.concat([final_hhs_df, selected_hhs_df])
 
-            logging.info(f"Control: {control_total}, {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']} (actual {num_hhs}) hhs allocated to GEOID10 {blcgrpid}, {num_parcels} parcels are processed")
+            logging.debug(f"Control: {control_total}, {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']} (actual {num_hhs}) hhs allocated to GEOID10 {blcgrpid}, {num_parcels} parcels are processed")
 
         final_hhs_df = final_hhs_df.merge(parcels_for_allocation_df[['PSRC_ID', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
         final_hhs_df.rename(columns = {'BKRCastTAZ': 'hhtaz'}, inplace = True)
         final_hhs_df.drop(columns = ['PSRC_ID'], axis = 1, inplace = True)
 
         ### process other attributes to match required columns
+        logging.info('Processing other column attributes...')
         pop_df = pd.read_csv(os.path.join(working_folder_synpop, synthetic_population_file_name)) 
         pop_df.rename(columns={'household_id':'hhno', 'SEX':'pgend'}, inplace = True)
-        ages=pop_df.pagey
+        ages = pop_df.pagey
         pop_df.sort_values(by = 'hhno', inplace = True)
 
         # -1 pdairy ppaidprk pspcl,pstaz ptpass,puwarrp,puwdepp,puwmode,pwpcl,pwtaz 
         # pstyp is covered by pptyp and pwtyp, misssing: puwmode -1 puwdepp -1 puwarrp -1 pwpcl -1 pwtaz -1 ptpass -1  pspcl,pstaz 
         # 1 psexpfac 
-        morecols=pd.DataFrame({'pdairy': [-1]*pop_df.shape[0],'pno': [-1]*pop_df.shape[0],'ppaidprk': [-1]*pop_df.shape[0],'psexpfac': [1]*pop_df.shape[0],
+        morecols = pd.DataFrame({'pdairy': [-1]*pop_df.shape[0],'pno': [-1]*pop_df.shape[0],'ppaidprk': [-1]*pop_df.shape[0],'psexpfac': [1]*pop_df.shape[0],
                             'pspcl': [-1]*pop_df.shape[0], 'pstaz': [-1]*pop_df.shape[0],'pptyp': [-1]*pop_df.shape[0],'ptpass': [-1]*pop_df.shape[0],
                             'puwarrp': [-1]*pop_df.shape[0], 'puwdepp': [-1]*pop_df.shape[0],'puwmode': [-1]*pop_df.shape[0],
                             'pwpcl': [-1]*pop_df.shape[0], 'pwtaz': [-1]*pop_df.shape[0]})
-        pop_df=pop_df.join(morecols) #1493219
+        pop_df = pop_df.join(morecols) #1493219
 
-        ####here assign household size in household size and person numbers in person file
+        ### here assign household size in household size and person numbers in person file
         hhsize_df = pop_df.groupby('hhno')[['psexpfac']].sum().reset_index()
         final_hhs_df.rename(columns = {'household_id':'hhno'}, inplace = True)
         final_hhs_df = final_hhs_df.merge(hhsize_df, how = 'inner', left_on = 'hhno', right_on = 'hhno')
         final_hhs_df['hhsize'] = final_hhs_df['psexpfac']
         final_hhs_df.drop(['psexpfac'], axis = 1, inplace = True)
 
-
         #=========================================
-        pwtype=pop_df.WKW.fillna(-1)
-        pop_df.WKW=pwtype
+        pwtype = pop_df.WKW.fillna(-1)
+        pop_df.WKW = pwtype
         set(pwtype)
-        fullworkers=[1, 2]
-        partworkers=[3.0, 4.0, 5.0, 6.0]
-        noworker=[-1]
+        fullworkers = [1, 2]
+        partworkers = [3.0, 4.0, 5.0, 6.0]
+        noworker = [-1]
 
-        pstype=pop_df.pstyp.fillna(-1)
-        pop_df.pstyp=pstype
-        fullstudents=[3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
-        nostudents=[-1, 0, 1.0, 2.0]
-        pp5=[15, 16]
-        pp6=[13.0, 14.0]
-        pp7=[2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
-        pp8=[1]
+        pstype = pop_df.pstyp.fillna(-1)
+        pop_df.pstyp = pstype
+        fullstudents = [3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
+        nostudents = [-1, 0, 1.0, 2.0]
+        pp5 = [15, 16]
+        pp6 = [13.0, 14.0]
+        pp7 = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
+        pp8 = [1]
 
-        lenpersons=pop_df.shape[0] #3726050
-        #pptyp Person type (1=full time worker, 2=part time worker, 3=non-worker age 65+, 4=other non-working adult, 
-        #5=university student, 6=grade school student/child age 16+, 7=child age 5-15, 8=child age 0-4); 
-        #this could be made optional and computed within DaySim for synthetic populations based on ACS PUMS; for other survey data, the coding and rules may be more variable and better done outside DaySim
-
+        lenpersons = pop_df.shape[0] #3726050
+        # pptyp: Person type (1=full time worker, 2=part time worker, 3=non-worker age 65+, 4=other non-working adult, 
+        # 5=university student, 6=grade school student/child age 16+, 7=child age 5-15, 8=child age 0-4); 
+        # this could be made optional and computed within DaySim for synthetic populations based on ACS PUMS; 
+        # for other survey data, the coding and rules may be more variable and better done outside DaySim
+        logging.info('Processing attributes may also take a while...')
+        # TODO: rewrite the following loop to make it faster
         lastHhno = -1
         personid = 0
         for i in range(lenpersons):
             if i % 100000 == 0:
-                logging.info(i, ' persons processed.')
+                logging.info(f'{i:,.0f} persons processed.')
 
             # assign pno
             curHhno = pop_df['hhno'].iat[i]
@@ -566,9 +621,9 @@ class SynPop:
             pop_df['pno'].iat[i] = personid
             lastHhno = curHhno
 
-            tmpw=pwtype[i]
-            tmps=pstype[i]
-            tmpage=ages[i]
+            tmpw = pwtype[i]
+            tmps = pstype[i]
+            tmpage = ages[i]
 
             if tmps in nostudents:
                 pop_df['pstyp'].iat[i] = 0
@@ -605,23 +660,29 @@ class SynPop:
 
         pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
 
-        morecols=pd.DataFrame({'hownrent': [-1]*final_hhs_df.shape[0]})
+        morecols = pd.DataFrame({'hownrent': [-1]*final_hhs_df.shape[0]})
         final_hhs_df.drop(['hownrent'], axis = 1, inplace = True)
-        final_hhs_df=final_hhs_df.join(morecols) 
+        final_hhs_df = final_hhs_df.join(morecols) 
 
         pop_df = pop_df.loc[pop_df['hhno'].isin(final_hhs_df['hhno'])]
         output_h5_file = h5py.File(os.path.join(working_folder_synpop, h5_file_name), 'w')
         utility.df_to_h5(final_hhs_df, output_h5_file, 'Household')
         utility.df_to_h5(pop_df, output_h5_file, 'Person')
         output_h5_file.close()
-        logging.info('H5 exported.')
+        logging.info(f'Parcelized household and person file is exported in hdf5 format: {os.path.join(working_folder_synpop, h5_file_name)}')
 
-        pop_df.to_csv(os.path.join(working_folder_synpop, updated_persons_file_name), sep = ',')  
+        pop_df.to_csv(os.path.join(working_folder_synpop, updated_persons_file_name), sep = ',')
+        logging.info(f'Parcelized person file is also exported in csv format: {os.path.join(working_folder_synpop, updated_persons_file_name)}')
+        
         final_hhs_df.to_csv(os.path.join(working_folder_synpop, updated_hhs_file_name), sep = ',')
+        logging.info(f'Parcelized household file is also exported in csv format: {os.path.join(working_folder_synpop, h5_file_name)}')
 
-        utility.backupScripts(__file__, os.path.join(working_folder_synpop, os.path.basename(__file__)))
+        logging.info('Backing up the scripts for step C...')
+        os.makedirs(os.path.join(working_folder_lu, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_synpop, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step C backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
 
-        logging.info('Total census block groups: ', len(all_blcgrp_ids))
-        logging.info('Final number of households: ', final_hhs_df.shape[0])
-        logging.info('Final number of persons: ', pop_df.shape[0])
-        logging.info('Executing step C...done.\n')
+        logging.info(f'Total census block groups: {len(all_blcgrp_ids):,.0f}')
+        logging.info(f'Final number of households: {final_hhs_df.shape[0]:,.0f}')
+        logging.info(f'Final number of persons: {pop_df.shape[0]:,.0f}')
+        logging.info(f'Executing step C...done. Allocating the synthetic households and persons to control parcels is completed.\n')

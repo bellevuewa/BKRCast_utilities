@@ -38,13 +38,8 @@ class LandUse:
         # Step 1
         #####
         self.lookup_df = pd.read_csv(lookup_file, sep = ',', low_memory = False)
-        self.kc_df = pd.read_csv(os.path.join(working_folder_lu, kingcsqft), sep = ',', low_memory = False)
-        self.subarea_df = pd.read_csv(subarea_file, sep = ',')
-
-        # rename columns to fit modeling input format
-        self.kc_df.rename(columns = job_rename_dict, inplace = True)
-        self.kc_df.rename(columns = sqft_rename_dict, inplace = True)
-        self.kc_df.rename(columns = du_rename_dict, inplace = True)
+        self.kc_df = None
+        self.subarea_df = None
 
         #####
         # Step 2
@@ -84,6 +79,14 @@ class LandUse:
 
         # 5/1/2025
         # move the paths into config.py
+
+        self.kc_df = pd.read_csv(os.path.join(working_folder_lu, kingcsqft), sep = ',', low_memory = False)
+        self.subarea_df = pd.read_csv(subarea_file, sep = ',')
+
+        # rename columns to fit modeling input format
+        self.kc_df.rename(columns = job_rename_dict, inplace = True)
+        self.kc_df.rename(columns = sqft_rename_dict, inplace = True)
+        self.kc_df.rename(columns = du_rename_dict, inplace = True)
 
         logging.info('Exporting job file...')
         # kc_df dataframe may already have ['PSRC_ID', 'JURIS', 'BKRCASTTAZ'], the merge below just to ensure these features match with our BKRCast model
@@ -199,7 +202,8 @@ class LandUse:
         self.parcel_latter_df = pd.read_csv(parcel_file_name_latter, sep = ' ')
         self.parcel_latter_df.columns = [i.upper() for i in self.parcel_latter_df.columns]
 
-        columns = job_cat_list
+        logging.info('Interpolating...')
+        columns = copy.copy(job_cat_list)
         columns.append('PARCELID')
         job_std = copy.copy(job_cat_list)
         job_std.extend(['STUGRD_P', 'STUHGH_P', 'STUUNI_P'])
@@ -211,14 +215,14 @@ class LandUse:
         for cat in job_cat_list:
             parcels_from_latter_df['EMPTOT_L'] = parcels_from_latter_df[cat + '_L'] + parcels_from_latter_df['EMPTOT_L']
 
-        logging.info('Total jobs in year ', future_year, ' are ', parcels_from_latter_df['EMPTOT_L'].sum())
+        logging.info(f"Total jobs in year {future_year} are {parcels_from_latter_df['EMPTOT_L'].sum():,.0f}")
         parcel_horizon_df = self.parcel_earlier_df.merge(parcels_from_latter_df.reset_index(), how = 'inner', left_on = 'PARCELID', right_on = 'PARCELID')
 
         parcel_horizon_df['EMPTOT_E'] = 0
         for cat in job_cat_list:
             parcel_horizon_df['EMPTOT_E'] = parcel_horizon_df['EMPTOT_E'] + parcel_horizon_df[cat]
         parcel_horizon_df['EMPTOT_P'] = parcel_horizon_df['EMPTOT_E']
-        logging.info('Total jobs in year ', base_year, ' are ', parcel_horizon_df['EMPTOT_P'].sum())
+        logging.info(f"Total jobs in year {base_year} are {parcel_horizon_df['EMPTOT_P'].sum():,.0f}")
 
         # interpolate number of jobs, and round to integer.
         for cat in job_std:
@@ -232,15 +236,19 @@ class LandUse:
         parcel_horizon_df = parcel_horizon_df.drop([i + '_L' for i in job_std], axis = 1)
         parcel_horizon_df = parcel_horizon_df.drop(['EMPTOT_L', 'EMPTOT_E'], axis = 1)
         parcel_horizon_df.to_csv(os.path.join(working_folder_lu, new_parcel_file_name), index = False, sep = ' ')
-        logging.info('After interpolation, total jobs are ', parcel_horizon_df['EMPTOT_P'].sum())
+        logging.info(f"After interpolation, total jobs are {parcel_horizon_df['EMPTOT_P'].sum():,.0f}")
 
         utility.backupScripts(__file__, os.path.join(working_folder_lu, os.path.basename(__file__)))
 
-        logging.info('Step 3 done.\n')
+        logging.info('Backing up the scripts for step 3...')
+        os.makedirs(os.path.join(working_folder_lu, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step 3 backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+        logging.info('Step 3 done. Parcel files are interpolated based on the base and the future years.\n')
 
     def step_4_update_parcel_columns(self):
         """
-        Step 4: replace_parcel_columns_with_new_tables_v2.py
+        Step 4: replace_parcel_columns_with_new_tables.py
             Replace parcel columns with new tables. Since CD will provide numebr of jobs instead of sqft, we will use this sript to 
             replace PSRC's pacel data within King County with sqft converted jobs from CD.
             We do not need to run other scripts to handle sqft and conversion so the land use
@@ -256,26 +264,32 @@ class LandUse:
         # 05/01/2025
         # move the paths into config.py
 
-        self.new_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, new_parcel_data_file_name), sep = ',', low_memory = False)
+        self.new_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, new_bellevue_parcel_data_file_name), sep = ',', low_memory = False)
         self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
 
         logging.info('Processing Bellevue jobs...')
         full_bellevue_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == 'BELLEVUE']
-        actual_bel_parcels_df = new_parcel_data_df.loc[new_parcel_data_df['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
+        actual_bel_parcels_df = self.new_parcel_data_df.loc[self.new_parcel_data_df['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
         not_in_full_bellevue_parcels = actual_bel_parcels_df.loc[~actual_bel_parcels_df['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
-        missing_bellevue_parcels_df = self.original_parcel_data_df.loc[self.original_parcel_data_df['PARCELID'].isin(full_bellevue_parcels_df.loc[~full_bellevue_parcels_df['PSRC_ID'].isin(new_parcel_data_df['PSRC_ID']), 'PSRC_ID'])]
-        missing_bellevue_parcels_df.to_csv(os.path.join(working_folder_lu, 'missing_bellevue_parcels.csv'), sep = ',', index = False)
-        not_in_full_bellevue_parcels.to_csv(os.path.join(working_folder_lu, 'not_valid_bellevue_parcels.csv'), sep = ',', index = False)
+        missing_bellevue_parcels_df = self.original_parcel_data_df.loc[self.original_parcel_data_df['PARCELID'].isin(full_bellevue_parcels_df.loc[~full_bellevue_parcels_df['PSRC_ID'].isin(self.new_parcel_data_df['PSRC_ID']), 'PSRC_ID'])]
+        if len(not_in_full_bellevue_parcels) > 0:
+            fname = os.path.join(working_folder_lu, f'not_valid_bellevue_parcels_{modeller_initial}_{version}.csv')
+            not_in_full_bellevue_parcels.to_csv(fname, sep = ',', index = False)
+            logging.warning(f'Some parcels missing compared to the Bellevue lookup table. Exported in {fname}\n')
+        if len(missing_bellevue_parcels_df) > 0:
+            fname = os.path.join(working_folder_lu, f'missing_bellevue_parcels_{modeller_initial}_{version}.csv')
+            missing_bellevue_parcels_df.to_csv(fname, sep = ',', index = False)
+            logging.warning(f'Some parcels are not covered in the Bellevue lookup table. Exported in {fname}\n')        
 
-        newjobs = new_parcel_data_df['EMPTOT_P'].sum() 
-        logging.info('new parcel data file has ' + str(newjobs)  + ' jobs.')
-        new_parcel_data_df = new_parcel_data_df.set_index('PSRC_ID')
+        newjobs = self.new_parcel_data_df['EMPTOT_P'].sum() 
+        logging.info(f'New parcel data file has {newjobs:,.0f} jobs.\n')
+        new_parcel_data_df = self.new_parcel_data_df.set_index('PSRC_ID')
         updated_parcel_df = self.original_parcel_data_df.copy()
         updated_parcel_df = updated_parcel_df.set_index('PARCELID')
         oldjobs = updated_parcel_df.loc[updated_parcel_df.index.isin(new_parcel_data_df.index), 'EMPTOT_P'].sum()
-        logging.info('Bellevue jobs before change: ' + str(oldjobs))
-        logging.info('              after change: ' + str(newjobs))
-        logging.info('Bellevue jobs gained ' + str(newjobs - oldjobs))
+        logging.info(f'Parcels to be replaced have {oldjobs:,.0f} jobs')
+        logging.info(f'Parcels after change have {newjobs:,.0f} jobs')
+        logging.info(f'Jobs gained {(newjobs - oldjobs):,.0f}\n')
         updated_parcel_df.loc[updated_parcel_df.index.isin(new_parcel_data_df.index), columns_list] = new_parcel_data_df[columns_list]
 
         # update the total jobs 
@@ -287,70 +301,22 @@ class LandUse:
             jobs_to_be_zeroed_out = updated_parcel_df.loc[updated_parcel_df.index.isin(missing_bellevue_parcels_df['PARCELID']), 'EMPTOT_P'].sum()
             updated_parcel_df.loc[updated_parcel_df.index.isin(missing_bellevue_parcels_df['PARCELID']), columns_list] = 0
             logging.info('-----------------------------------------')
-            logging.warning('Some COB parcels are not provided in the ' + new_parcel_data_file_name + '.')
+            logging.warning('Some COB parcels are not provided in the ' + new_bellevue_parcel_data_file_name + '.')
             logging.warning('But they exist in ' + original_parcel_file_name + '.')
-            logging.warning('Number of jobs in these parcels are now zeroed out: ' + str(jobs_to_be_zeroed_out))
+            logging.warning(f'Number of jobs in these parcels are now zeroed out: {jobs_to_be_zeroed_out:,.0f}\n')
 
-        logging.info('processing Kirkland land use input...')
-        # if jobs by old trip model taz (BKRTMTAZ) is provided (either by Kirkland or Redmond), we need to apply the following assumptions to 
-        # scale BKRCast jobs up to match the provided jobs.
-        '''
-        Left is job category in old BKR model. Kirkland is still using these land use categories.
-        Right is job category used by BKRCast.
-        Use Kirkland's job estimate as control total for each BKRTMTAZ, scale the PSRC jobs in each parcel such that total scaled jobs matches Kirkland's estimate
-        in BKRTMTAZ level.
-        '''
-        kirk_control_jobs_by_BKRTMTAZ_df = pd.read_csv(os.path.join(working_folder_lu, jobs_by_old_BKRTMTAZ_file))
-        kirk_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == 'KIRKLAND']
-        kirk_parcels_df = updated_parcel_df.reset_index().merge(kirk_parcels_df[['PSRC_ID', 'BKRTMTAZ']], left_on = 'PARCELID', right_on = 'PSRC_ID')
-        temp_col_list = columns_list.copy()
-        temp_col_list.append('EMPTOT_P')
-        temp_col_list.append('BKRTMTAZ')
-        psrc_kirk_jobs = kirk_parcels_df['EMPTOT_P'].sum()
-        kirk_psrc_jobs_by_BKRTMTAZ_df = kirk_parcels_df[temp_col_list].groupby('BKRTMTAZ').sum()
-        kirk_control_jobs_by_BKRTMTAZ_df = kirk_control_jobs_by_BKRTMTAZ_df.merge(kirk_psrc_jobs_by_BKRTMTAZ_df.reset_index(), on = 'BKRTMTAZ', how = 'left')
-        kirk_control_jobs_by_BKRTMTAZ_df.loc[kirk_control_jobs_by_BKRTMTAZ_df['EMPTOT_P'] != 0, 'scale'] = kirk_control_jobs_by_BKRTMTAZ_df['KirklandControlTotal'] / kirk_control_jobs_by_BKRTMTAZ_df['EMPTOT_P']
-        kirk_control_jobs_by_BKRTMTAZ_df.loc[kirk_control_jobs_by_BKRTMTAZ_df['EMPTOT_P'] == 0, 'scale'] = 1
-        kirk_control_jobs_by_BKRTMTAZ_df.to_csv(os.path.join(working_folder_lu, 'Kirkland_job_scale_comparison.csv'), index = True)
+        logging.info(f"Total jobs before change: {self.original_parcel_data_df['EMPTOT_P'].sum():,.0f}")
+        logging.info(f"Total jobs after change: {updated_parcel_df['EMPTOT_P'].sum():,.0f}\n")
 
-        kirk_parcels_df = kirk_parcels_df.merge(kirk_control_jobs_by_BKRTMTAZ_df[['BKRTMTAZ', 'scale']], on = 'BKRTMTAZ', how = 'left')
-        kirk_parcels_df['EMPTOT_P'] = 0
-        for col in columns_list:
-            kirk_parcels_df[col] = kirk_parcels_df[col] * kirk_parcels_df['scale']
-            kirk_parcels_df[col] = kirk_parcels_df[col].round(0).astype(int)
-            kirk_parcels_df['EMPTOT_P'] += kirk_parcels_df[col]    
-
-        kirk_parcels_df.to_csv(os.path.join(working_folder_lu, 'adjusted_jobs_by_parcel_in_Kirkland.csv'), index = False)
-        kirk_jobs_by_BKRTMTAZ_df = kirk_parcels_df[temp_col_list].groupby('BKRTMTAZ').sum()
-        kirk_jobs_by_BKRTMTAZ_df = kirk_jobs_by_BKRTMTAZ_df.merge(kirk_control_jobs_by_BKRTMTAZ_df[['BKRTMTAZ', 'KirklandControlTotal']], on = 'BKRTMTAZ')
-        kirk_jobs_by_BKRTMTAZ_df.to_csv(os.path.join(working_folder_lu, 'Kirkland_job_comparison_by_BKRTMTAZ.csv'), index = True)
-
-        updated_parcel_df = updated_parcel_df.loc[~updated_parcel_df.index.isin(kirk_parcels_df['PARCELID'])]
-        kirk_parcels_df.drop(columns = ['PSRC_ID', 'BKRTMTAZ', 'scale'], inplace = True)
-        updated_parcel_df = pd.concat([updated_parcel_df.reset_index(), kirk_parcels_df])
-        updated_parcel_df = updated_parcel_df.sort_values(by = ['PARCELID'], ascending = True)
-
-        # update total jobs in each parcel
-        updated_parcel_df['EMPTOT_P'] = 0
-        for col in columns_list:
-            updated_parcel_df['EMPTOT_P'] = updated_parcel_df['EMPTOT_P'] + updated_parcel_df[col]
-            
-        new_kirk_jobs = updated_parcel_df.loc[updated_parcel_df.index.isin(kirk_parcels_df['PARCELID']), 'EMPTOT_P'].sum()
-
-        logging.info('Kirkland jobs before change: ' + str(psrc_kirk_jobs))
-        logging.info('              after change: ' + str(new_kirk_jobs))
-        logging.info('Kirkland jobs gained ' + str(new_kirk_jobs - psrc_kirk_jobs))
-
-        logging.info('total jobs before change: ' + str(self.original_parcel_data_df['EMPTOT_P'].sum()))
-        logging.info('total jobs after change: ' + str(updated_parcel_df['EMPTOT_P'].sum()))
-        logging.info('')
-
-        logging.info('Exporting parcel files...')
+        logging.info('Exporting parcel file(s)...')
         updated_parcel_df.to_csv(os.path.join(working_folder_lu, updated_parcel_file_name), sep = ' ')
-        utility.backupScripts(__file__, os.path.join(working_folder_lu, os.path.basename(__file__)))
+        logging.info(f'Updated parcel file is exported in {os.path.join(working_folder_lu, updated_parcel_file_name)}.')
 
-
-        logging.info('Done')
+        logging.info('Backing up the scripts for step 4...')
+        os.makedirs(os.path.join(working_folder_lu, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step 4 backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+        logging.info('Step 4 done. Parcel files are updated with required columns.\n')
 
 
     def step_5_sync_pop2parcels(self):
@@ -366,13 +332,13 @@ class LandUse:
         # 05/01/2025
         # move the paths into config.py
         
-        logging.info('Loading hh_and_persons.h5...')
-        hdf_file = h5py.File(hh_and_person_file, "r")
+        logging.info('\nLoading hh_and_persons.h5...')
+        hdf_file = h5py.File(os.path.join(working_folder_synpop, h5_file_name), "r")
         hh_df = utility.h5_to_df(hdf_file, 'Household')
 
         logging.info('Updating number of households...')
         hhs = hh_df.groupby('hhparcel')[['hhexpfac', 'hhsize']].sum().reset_index()
-        parcel_df = pd.read_csv(os.path.join(parcel_folder, input_parcel_file), sep = ' ')
+        parcel_df = pd.read_csv(os.path.join(working_folder_lu, updated_parcel_file_name), sep = ' ')
         parcel_df = parcel_df.merge(hhs, how = 'left', left_on = 'PARCELID', right_on = 'hhparcel')
 
         parcel_df['HH_P']  = 0
@@ -382,10 +348,13 @@ class LandUse:
         parcel_df['HH_P'] = parcel_df['HH_P'].round(0).astype(int)
 
 
-        logging.info('Exporting future parcel file...')
-        parcel_df.to_csv(os.path.join(parcel_folder, output_parcel_file), sep = ' ', index = False)
+        logging.info('\nExporting future parcel file...')
+        parcel_df.to_csv(os.path.join(working_folder_lu, output_parcel_file), sep = ' ', index = False)
+        logging.info(f'Future parcel file is exported in {os.path.join(working_folder_lu, output_parcel_file)}...')
 
-        utility.backupScripts(__file__, os.path.join(parcel_folder, os.path.basename(__file__)))
-
-        logging.info('Step 5 done.')
+        logging.info('Backing up the scripts for step 5...')
+        os.makedirs(os.path.join(working_folder_lu, self.backup_folder, version), exist_ok=True)
+        utility.backupScripts(__file__, os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__)))
+        logging.info(f'Scripts for step 5 backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
+        logging.info('Step 5 done. Synchronizing the synthetic population to parcel file is completed\n')
         logging.info('Land use process is complete. Please check the output numbers.\n')

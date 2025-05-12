@@ -512,6 +512,7 @@ class SynPop:
         final_hhs_df = pd.DataFrame()
 
         logging.info(f"Allocating households to parcels at each census block group...\nIt may take a while...\n")
+        # TODO: Can we speed up the process below?
         for blcgrpid in all_blcgrp_ids:
             # if (hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac'] != hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']):
             #     logging.info(f"GEOID10 {blcgrpid}:  popsim: {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']}, parcel: {hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']}")
@@ -563,16 +564,16 @@ class SynPop:
         logging.info('Processing other column attributes...')
         pop_df = pd.read_csv(os.path.join(working_folder_synpop, synthetic_population_file_name)) 
         pop_df.rename(columns={'household_id':'hhno', 'SEX':'pgend'}, inplace = True)
-        ages = pop_df.pagey
         pop_df.sort_values(by = 'hhno', inplace = True)
 
         # -1 pdairy ppaidprk pspcl,pstaz ptpass,puwarrp,puwdepp,puwmode,pwpcl,pwtaz 
         # pstyp is covered by pptyp and pwtyp, misssing: puwmode -1 puwdepp -1 puwarrp -1 pwpcl -1 pwtaz -1 ptpass -1  pspcl,pstaz 
         # 1 psexpfac 
-        morecols = pd.DataFrame({'pdairy': [-1]*pop_df.shape[0],'pno': [-1]*pop_df.shape[0],'ppaidprk': [-1]*pop_df.shape[0],'psexpfac': [1]*pop_df.shape[0],
-                            'pspcl': [-1]*pop_df.shape[0], 'pstaz': [-1]*pop_df.shape[0],'pptyp': [-1]*pop_df.shape[0],'ptpass': [-1]*pop_df.shape[0],
-                            'puwarrp': [-1]*pop_df.shape[0], 'puwdepp': [-1]*pop_df.shape[0],'puwmode': [-1]*pop_df.shape[0],
-                            'pwpcl': [-1]*pop_df.shape[0], 'pwtaz': [-1]*pop_df.shape[0]})
+        morecols = pd.DataFrame({'pdairy': [-1]*pop_df.shape[0],'pno': [-1]*pop_df.shape[0],'ppaidprk': [-1]*pop_df.shape[0],
+                                 'psexpfac': [1]*pop_df.shape[0],'pspcl': [-1]*pop_df.shape[0], 'pstaz': [-1]*pop_df.shape[0],
+                                 'pptyp': [-1]*pop_df.shape[0],'ptpass': [-1]*pop_df.shape[0],'puwarrp': [-1]*pop_df.shape[0], 
+                                 'puwdepp': [-1]*pop_df.shape[0],'puwmode': [-1]*pop_df.shape[0],'pwpcl': [-1]*pop_df.shape[0], 
+                                 'pwtaz': [-1]*pop_df.shape[0]})
         pop_df = pop_df.join(morecols) #1493219
 
         ### here assign household size in household size and person numbers in person file
@@ -583,80 +584,80 @@ class SynPop:
         final_hhs_df.drop(['psexpfac'], axis = 1, inplace = True)
 
         #=========================================
-        pwtype = pop_df.WKW.fillna(-1)
-        pop_df.WKW = pwtype
-        set(pwtype)
+        # in pwtype (person worker type), 1 and 2 represent fullworkers; 3 to 6 represent part-time workers; -1 represents non-worker.
         fullworkers = [1, 2]
         partworkers = [3.0, 4.0, 5.0, 6.0]
         noworker = [-1]
-
+        # in pstype (person student type), 
+        # -1, 1 and 2 represent non-student; 3 to 16 represent full-time student; -1 represents non-worker.
         pstype = pop_df.pstyp.fillna(-1)
         pop_df.pstyp = pstype
         fullstudents = [3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
         nostudents = [-1, 0, 1.0, 2.0]
+        # pstype=15 or 16: university student (pptyp=5)
+        # pstype=13 or 14: grade school student/child age 16+ (pptyp=6)
+        # pstype=2 to 12: child age 5-15 (pptyp=7)
+        # pstype=1: child age 0-4 (pptyp=8)
         pp5 = [15, 16]
         pp6 = [13.0, 14.0]
         pp7 = [2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
         pp8 = [1]
 
-        lenpersons = pop_df.shape[0] #3726050
         # pptyp: Person type (1=full time worker, 2=part time worker, 3=non-worker age 65+, 4=other non-working adult, 
         # 5=university student, 6=grade school student/child age 16+, 7=child age 5-15, 8=child age 0-4); 
         # this could be made optional and computed within DaySim for synthetic populations based on ACS PUMS; 
         # for other survey data, the coding and rules may be more variable and better done outside DaySim
-        logging.info('Processing attributes may also take a while...')
-        # TODO: rewrite the following loop to make it faster
-        lastHhno = -1
-        personid = 0
-        for i in range(lenpersons):
-            if i % 100000 == 0:
-                logging.info(f'{i:,.0f} persons processed.')
+        logging.info('Processing attributes...')
+        # assign pno within each household
+        pop_df['pno'] = pop_df.groupby('hhno').cumcount() + 1
+        #####
+        # Assign pwtyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
+        #####
+        pop_df['WKW'].fillna(-1)
+        # full-time worker
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pwtyp'] = 1
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pptyp'] = 1
+        # part-time worker
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pwtyp'] = 2
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pptyp'] = 2
 
-            # assign pno
-            curHhno = pop_df['hhno'].iat[i]
-            if curHhno != lastHhno:
-                personid = 1
-            else:
-                personid = personid + 1
-            pop_df['pno'].iat[i] = personid
-            lastHhno = curHhno
+        #####
+        # Assign pstyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
+        #####
+        pop_df.rename(columns={'pstyp': 'pstyp_'}, inplace=True)
+        pop_df['pstyp_'] = pop_df['pstyp_'].fillna(-1)
+        pop_df['pstyp'] = -1        
+        # full-time student
+        pop_df.loc[pop_df['pstyp_'].isin(fullstudents), 'pstyp'] = 1
+        # part-time student
+        pop_df.loc[(pop_df['WKW'].isin(partworkers)) &
+                   (pop_df['pstyp_'].isin(fullstudents)), 'pstyp'] = 2
+        # non-student
+        pop_df.loc[pop_df['pstyp_'].isin(nostudents), 'pstyp'] = 0
 
-            tmpw = pwtype[i]
-            tmps = pstype[i]
-            tmpage = ages[i]
-
-            if tmps in nostudents:
-                pop_df['pstyp'].iat[i] = 0
-            elif tmps in fullstudents:
-                pop_df['pstyp'].iat[i] = 1
-
-            if tmpw in noworker:
-                pop_df['pwtyp'].iat[i] = 0
-                if tmpage >= 65:
-                    pop_df['pptyp'].iat[i] = 3
-                elif tmpage > 15:
-                    pop_df['pptyp'].iat[i] = 4
-                elif 5 <= tmpage <= 15:
-                    pop_df['pptyp'].iat[i] = 7
-                elif 0 <= tmpage < 5:
-                    pop_df['pptyp'].iat[i] = 8
-            elif tmpw in fullworkers:
-                pop_df['pwtyp'].iat[i] = 1
-                pop_df['pptyp'].iat[i] = 1
-            elif tmpw in partworkers:
-                pop_df['pptyp'].iat[i] = 2
-                pop_df['pwtyp'].iat[i] = 2
-                if tmps in fullstudents:
-                    pop_df['pstyp'].iat[i] = 2
-
-            if tmps in pp5:
-                pop_df['pptyp'].iat[i] = 5
-            elif tmps in pp6:
-                pop_df['pptyp'].iat[i] = 6
-            elif tmps in pp7:
-                pop_df['pptyp'].iat[i] = 7
-            elif tmps in pp8:
-                pop_df['pptyp'].iat[i] = 8
+        #####
+        # Assign pptyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
+        #####
+        # university student
+        pop_df.loc[pop_df['pstyp_'].isin(pp5), 'pptyp'] = 5
+        # grade school student/child age 16+
+        pop_df.loc[pop_df['pstyp_'].isin(pp6), 'pptyp'] = 6
+        # child age 5-15
+        pop_df.loc[pop_df['pstyp_'].isin(pp7), 'pptyp'] = 7
+        # child age 0-4
+        pop_df.loc[pop_df['pstyp_'].isin(pp8), 'pptyp'] = 8
+        # non-worker and over 65 years old
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
+                   (pop_df['pagey']>=65), 'pptyp'] = 3
+        # non-worker and over 15 years old
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
+                   (pop_df['pagey']>15), 'pptyp'] = 4
+        # non-worker and age between 5-15
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
+                   (5<=pop_df['pagey']) * (pop_df['pagey']<=15), 'pptyp'] = 7
+        # non-worker and age between 0-5
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
+                   (0<=pop_df['pagey']) * (pop_df['pagey']<5), 'pptyp'] = 8
 
         pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
 

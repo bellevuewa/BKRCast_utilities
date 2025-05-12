@@ -494,9 +494,9 @@ class SynPop:
         self.hhs_df = pd.read_csv(os.path.join(working_folder_synpop, synthetic_households_file_name))
 
         self.hhs_df['hhparcel'] = 0
-        hhs_by_GEOID10 = self.hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()
+        hhs_by_GEOID10_synpop = self.hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()
 
-        parcels_for_allocation_df = pd.read_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file))
+        adjusted_hhs_by_parcel_df = pd.read_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file))
         # remove any blockgroup ID is Nan.
         all_blcgrp_ids = self.hhs_df['block_group_id'].unique()
         mask = np.isnan(all_blcgrp_ids)
@@ -505,58 +505,56 @@ class SynPop:
         if popsim_control_file == 'acecon0403.csv':
             # special treatment on GEOID10 530619900020. Since in 2016 ACS no hhs lived in this census blockgroup, when creating popsim control file
             # we move all hhs in this blockgroup to 530610521042. We need to do the same thing when we allocate hhs to parcels.
-            parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == 530619900020) & (parcels_for_allocation_df['total_hhs'] > 0), 'GEOID10'] = 530610521042
+            adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['GEOID10'] == 530619900020) & (adjusted_hhs_by_parcel_df['total_hhs'] > 0), 'GEOID10'] = 530610521042
 
-        hhs_by_blkgrp_popsim = self.hhs_df.groupby('block_group_id')[['hhexpfac', 'hhsize']].sum()
-        hhs_by_blkgrp_parcel = parcels_for_allocation_df.groupby('GEOID10')[['total_hhs']].sum()
+        hhs_by_blkgrp_adjusted = adjusted_hhs_by_parcel_df.groupby('GEOID10')[['total_hhs']].sum()
         final_hhs_df = pd.DataFrame()
 
         logging.info(f"Allocating households to parcels at each census block group...\nIt may take a while...\n")
-        # TODO: Can we speed up the process below?
         for blcgrpid in all_blcgrp_ids:
-            # if (hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac'] != hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']):
-            #     logging.info(f"GEOID10 {blcgrpid}:  popsim: {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']}, parcel: {hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']}")
-            #     logging.info('popsim should equal parcel. You need to fix this issue before moving forward.')
-            #     exit(-1)
+            assert hhs_by_GEOID10_synpop.loc[blcgrpid, 'hhexpfac'] == hhs_by_blkgrp_adjusted.loc[blcgrpid, 'total_hhs'], \
+                   '# households in the synthetic population should equal # households in the adjusted parcel file. You need to fix this issue before moving forward.'
             num_parcels = 0
             num_hhs = 0
-            parcels_in_GEOID10_df = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)]
-            subtotal_parcels = parcels_in_GEOID10_df.shape[0]
-            control_total = parcels_in_GEOID10_df['total_hhs'].sum()
+            parcels_in_adjusted_df = adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['GEOID10'] == blcgrpid) & 
+                                                                  (adjusted_hhs_by_parcel_df['total_hhs'] > 0)]
+            subtotal_parcels = parcels_in_adjusted_df.shape[0]
+            total_control_hhs = parcels_in_adjusted_df['total_hhs'].sum()
             j_start_index = 0
-            selected_hhs_df = self.hhs_df.loc[(self.hhs_df['block_group_id'] == blcgrpid) & (self.hhs_df['hhparcel'] == 0)].copy()
-            numhhs_avail_for_alloc = selected_hhs_df['hhexpfac'].sum()
-            index_hhparcel = selected_hhs_df.columns.get_loc('hhparcel')
+            selected_hhs_synpop_df = self.hhs_df.loc[(self.hhs_df['block_group_id'] == blcgrpid) & (self.hhs_df['hhparcel'] == 0)].copy()
+            numhhs_synpop = selected_hhs_synpop_df['hhexpfac'].sum()
+            index_hhparcel = selected_hhs_synpop_df.columns.get_loc('hhparcel')
             for i in range(subtotal_parcels):
-                numHhs = parcels_in_GEOID10_df['total_hhs'].iat[i]
-                parcelid = parcels_in_GEOID10_df['PSRC_ID'].iat[i]
+                numHhs = parcels_in_adjusted_df['total_hhs'].iat[i]
+                parcelid = parcels_in_adjusted_df['PSRC_ID'].iat[i]
                 for j in range(int(numHhs)):
-                    if num_hhs < numhhs_avail_for_alloc:
-                        selected_hhs_df.iat[j + j_start_index, index_hhparcel] = parcelid 
+                    if num_hhs < numhhs_synpop:
+                        selected_hhs_synpop_df.iat[j + j_start_index, index_hhparcel] = parcelid 
                         num_hhs += 1          
                 num_parcels += 1
                 j_start_index += int(numHhs)
 
-            ## take care the remaining unallocated hhs
-            # numhhs_avail_for_alloc is the number of households waiting for being assigned a parcel id;
-            # control_total is the total households where each household has a parcel id
-            unallocated_num = numhhs_avail_for_alloc - control_total  # number of households that have not been assigned a parcel id yet
+            ## take care the remaining unallocated hhs, very unlikely we'll have remaining unallocated hhs
+            # numhhs_synpop is the number of households waiting for being assigned a parcel id;
+            # total_control_hhs is the total households where each household has a parcel id
+            unallocated_num = numhhs_synpop - total_control_hhs  # number of households that have not been assigned a parcel id yet
             if unallocated_num > 0:
                 for j in range(int(unallocated_num)):
-                    if (j + j_start_index) < selected_hhs_df.shape[0]:
+                    if (j + j_start_index) < selected_hhs_synpop_df.shape[0]:
                         # randomly pick the corresponding parcel ids to those households
-                        parcels_for_allocation_this_cbg = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)]
+                        parcels_for_allocation_this_cbg = adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['GEOID10'] == blcgrpid) & 
+                                                                                        (adjusted_hhs_by_parcel_df['total_hhs'] > 0)]
                         assert len(parcels_for_allocation_this_cbg) >= unallocated_num, \
                             "Not enough households in the allocation file for allocating synthetic households.\n \
                             Is your synthetic household file is generated through PopulationSim based on the adjusted households from the previous step?"
                         random_picked_pids = parcels_for_allocation_this_cbg.sample(n = unallocated_num)['PSRC_ID'].to_numpy()
-                        selected_hhs_df.iat[j + j_start_index, index_hhparcel] = random_picked_pids[j] 
+                        selected_hhs_synpop_df.iat[j + j_start_index, index_hhparcel] = random_picked_pids[j] 
 
-            final_hhs_df = pd.concat([final_hhs_df, selected_hhs_df])
+            final_hhs_df = pd.concat([final_hhs_df, selected_hhs_synpop_df])
 
-            logging.debug(f"Control: {control_total}, {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']} (actual {num_hhs}) hhs allocated to GEOID10 {blcgrpid}, {num_parcels} parcels are processed")
+            logging.debug(f"Control: {total_control_hhs}, {hhs_by_GEOID10_synpop.loc[blcgrpid, 'hhexpfac']} (actual {num_hhs}) hhs allocated to GEOID10 {blcgrpid}, {num_parcels} parcels are processed")
 
-        final_hhs_df = final_hhs_df.merge(parcels_for_allocation_df[['PSRC_ID', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
+        final_hhs_df = final_hhs_df.merge(adjusted_hhs_by_parcel_df[['PSRC_ID', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
         final_hhs_df.rename(columns = {'BKRCastTAZ': 'hhtaz'}, inplace = True)
         final_hhs_df.drop(columns = ['PSRC_ID'], axis = 1, inplace = True)
 

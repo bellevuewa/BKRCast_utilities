@@ -17,7 +17,6 @@ log_fname = os.path.join(working_folder_lu, f"log_landuse_{modeller_initial}_{ve
 logging.basicConfig(filename=log_fname, level=logging.INFO, format="%(asctime)s: %(levelname)s - %(message)s")
 # also log info to console
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
 logger = logging.getLogger()
 logger.addHandler(console_handler)
 

@@ -18,7 +18,6 @@ log_fname = os.path.join(working_folder_synpop, f"log_synpop_{modeller_initial}_
 logging.basicConfig(filename=log_fname, level=logging.INFO, format="%(asctime)s: %(levelname)s - %(message)s")
 # also log info to console
 console_handler = logging.StreamHandler()
-console_handler.setLevel(logging.INFO)
 logger = logging.getLogger()
 logger.addHandler(console_handler)
 
@@ -172,7 +171,7 @@ class SynPop:
 
         logging.info('\nExecuting step A...done. Households and persons estimation by GEOID is completed.\n')
 
-    def step_B_distribute_hh2parcel(self):
+    def step_B_distribute_hh2parcel(self, debug=False):
         """
         Step B: prepare households for base or future year using KR oldTAZ COB parcel forecast.
         This program will decide how many households each parcel should have.
@@ -314,6 +313,11 @@ class SynPop:
         adj_persons_by_GEOID10 = adjusted_hhs_by_parcel_df[['GEOID10', 'adj_persons_by_parcel']].groupby('GEOID10').sum()
         total_hhs_before_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
         logging.info(f'Total number of households before rounding: {total_hhs_before_rounding:,.2f}\n')
+        logging.info(f"Total number of households in COB before rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'].sum():,.2f}\n")
+        # debug for crosscheck the hh numbers and the population
+        if debug:
+            cob_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['cobflag']=='cob'].copy(deep=True)
+            cob_before_ = cob_before[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
 
         logging.info('Rounding households to integer. Controlled by BKRCastTAZ subtotal....')
         # check if this 2016 file is 'acecon0403.csv'
@@ -358,7 +362,7 @@ class SynPop:
                 # need to bring down subtotal start from mf parcels. 
                 if mf_parcels_count > 0:
                     if mf_parcels_count < diff:
-                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] - 1
+                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] - 1
                         diff = diff - mf_parcels_count
                     else: # number of mf parcels are more than diff, randomly pick diff number of mf parcels and reduce adj_hhs_by_parcel in each parcel by 1
                         selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(diff))['PSRC_ID']
@@ -422,6 +426,21 @@ class SynPop:
         total_hhs_after_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
         logging.info('Controlled rounding is complete. ')
         logging.info(f'\nTotal hhs before rounding: {total_hhs_before_rounding:,.2f}, after: {total_hhs_after_rounding:,.0f}\n')
+        logging.info(f"Total number of households in COB after rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'].sum():,.2f}\n")
+        
+        if debug:
+            cob_tazs = list(adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob']['BKRCastTAZ'])
+            cob_after = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['BKRCastTAZ'].isin(cob_tazs)].copy(deep=True)
+            cob_after = cob_after[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
+            cob_after['controlled_hhs'] = 0
+            for _, record in cob_before_.iterrows():
+                if record['BKRCastTAZ'] in cob_tazs:
+                    cob_after.loc[cob_after['BKRCastTAZ']==record['BKRCastTAZ'], 'controlled_hhs'] = record['adj_hhs_by_parcel']
+            cob_after['cross_check'] = cob_after['adj_hhs_by_parcel'] - cob_after['controlled_hhs']
+            logging.debug(f"COB before control rounding: {cob_before['adj_hhs_by_parcel'].sum()}")
+            logging.debug(f"COB after control rounding: {cob_after['adj_hhs_by_parcel'].sum()}")
+            logging.debug(f"total control rounding difference (after - before): {cob_after['cross_check'].sum()}")
+            logging.debug(f"cross check table exported in: {os.path.join(working_folder_synpop, 'COB_population_before_after.csv')}")
 
         if  hhs_control_total_by_TAZ != '':
             # export adjusted hhs by parcel to file

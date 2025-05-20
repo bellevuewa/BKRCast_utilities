@@ -13,7 +13,7 @@ Land use configuration and the synthetic population configuration
 modeller_initial = 'oa'
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
 version = 'v0.0'
-step = 5  # step = 1, 2, 3, 4, 5, 'A', 'B', or 'C'. See main.py for more information
+step = 'B'  # step = 1, 2, 3, 4, 5, 'A', 'B', or 'C'. See main.py for more information
 
 # parcel vs TAZ lookup file
 lookup_file = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
@@ -113,7 +113,7 @@ ofm_estimate_template_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopS
 ## output paths for step A
 interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_ofm_estimate_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
 hhs_by_parcel_filename = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_hhs_by_parcels_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
-final_output_pop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_interpolated_synthetic_population_from_SC" + f'_{modeller_initial}_{version}' + ".f5"
+final_output_pop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_interpolated_synthetic_population_from_SC" + f'_{modeller_initial}_{version}' + ".h5"
 
 ## step A doesn't require other configurations
 

@@ -294,7 +294,8 @@ class LandUse:
         # update the total jobs 
         updated_parcel_df['EMPTOT_P'] = 0
         for col in columns_list:
-            updated_parcel_df['EMPTOT_P'] += updated_parcel_df[col]     
+            if col != 'EMPTOT_P':
+                updated_parcel_df['EMPTOT_P'] += updated_parcel_df[col]     
 
         if set_Jobs_to_Zeros_All_Bel_Parcels_Not_in_New_Parcel_Data_File == True:
             jobs_to_be_zeroed_out = updated_parcel_df.loc[updated_parcel_df.index.isin(missing_bellevue_parcels_df['PARCELID']), 'EMPTOT_P'].sum()
@@ -335,7 +336,7 @@ class LandUse:
         hdf_file = h5py.File(os.path.join(working_folder_synpop, h5_file_name), "r")
         hh_df = utility.h5_to_df(hdf_file, 'Household')
 
-        logging.info('Updating number of households...')
+        logging.info("Updating number of households using the synthetic population's households...")
         hhs = hh_df.groupby('hhparcel')[['hhexpfac', 'hhsize']].sum().reset_index()
         parcel_df = pd.read_csv(os.path.join(working_folder_lu, updated_parcel_file_name), sep = ' ')
         parcel_df = parcel_df.merge(hhs, how = 'left', left_on = 'PARCELID', right_on = 'hhparcel')

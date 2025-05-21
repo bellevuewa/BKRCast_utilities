@@ -171,8 +171,8 @@ avg_persons_per_mfhh =  2.03 # from Gwen
 #=====
 
 ## input paths for step C
-synthetic_households_file_name = '2023_baseyear_synthetic_households.csv'
-synthetic_population_file_name = '2023_baseyear_synthetic_persons.csv'
+synthetic_households_file_name = '2024_baseyear_synthetic_households.csv'
+synthetic_population_file_name = '2024_baseyear_synthetic_persons.csv'
 # number of hhs per parcel
 # Note: parcels_for_allocation_filename should be the output from step B: adjusted_hhs_by_parcel_file = r"2023_final_hhs_by_parcel.csv"
 
@@ -212,7 +212,6 @@ original_parcel_file_name = copy.copy(new_parcel_file_name) # r"interpolated_par
 
 ## output paths for step 4
 updated_parcel_file_name =  r"2024_baseyear_parcels_urbansim.txt"
-old_Subset_parcel_file_name = r"Old_parcels_subset.txt"
 
 ## other configurations for step 4
 set_Jobs_to_Zeros_All_Bel_Parcels_Not_in_New_Parcel_Data_File = True

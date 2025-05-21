@@ -38,7 +38,7 @@ This project provides a multi-step workflow as listed below.
    ```
 
 2. **Install required dependencies**:
-    - Set up your environment by following [BKRCast set-up steps](https://github.com/bellevuewa/BKRCast/wiki/BKRCast-Setup-Anaconda3)
+    - Set up your environment by following [BKRCast set-up steps](https://github.com/bellevuewa/BKRCast/wiki/Setup-for-OpenPath)
     - Install [PopulationSim](https://github.com/RSGInc/populationsim?tab=readme-ov-file) from [their documentation](https://activitysim.github.io/populationsim/)
 
 3. **Configure the paths and settings**:

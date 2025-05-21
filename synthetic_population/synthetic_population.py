@@ -317,7 +317,7 @@ class SynPop:
         # debug for crosscheck the hh numbers and the population
         if debug:
             cob_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['cobflag']=='cob'].copy(deep=True)
-            cob_before_ = cob_before[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
+            cob_before_ = cob_before[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
 
         logging.info('Rounding households to integer. Controlled by BKRCastTAZ subtotal....')
         # check if this 2016 file is 'acecon0403.csv'
@@ -431,16 +431,24 @@ class SynPop:
         if debug:
             cob_tazs = list(adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob']['BKRCastTAZ'])
             cob_after = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['BKRCastTAZ'].isin(cob_tazs)].copy(deep=True)
-            cob_after = cob_after[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
+            cob_after = cob_after[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
             cob_after['controlled_hhs'] = 0
+            cob_after['controlled_persons'] = 0
             for _, record in cob_before_.iterrows():
                 if record['BKRCastTAZ'] in cob_tazs:
                     cob_after.loc[cob_after['BKRCastTAZ']==record['BKRCastTAZ'], 'controlled_hhs'] = record['adj_hhs_by_parcel']
-            cob_after['cross_check'] = cob_after['adj_hhs_by_parcel'] - cob_after['controlled_hhs']
-            logging.debug(f"COB before control rounding: {cob_before['adj_hhs_by_parcel'].sum()}")
-            logging.debug(f"COB after control rounding: {cob_after['adj_hhs_by_parcel'].sum()}")
-            logging.debug(f"total control rounding difference (after - before): {cob_after['cross_check'].sum()}")
-            logging.debug(f"cross check table exported in: {os.path.join(working_folder_synpop, 'COB_population_before_after.csv')}")
+                    cob_after.loc[cob_after['BKRCastTAZ']==record['BKRCastTAZ'], 'controlled_persons'] = record['adj_persons_by_parcel']
+            cob_after['cross_check_hhs'] = cob_after['adj_hhs_by_parcel'] - cob_after['controlled_hhs']
+            cob_after['cross_check_persons'] = cob_after['adj_persons_by_parcel'] - cob_after['controlled_persons']
+            logging.info(f"COB hhs before control rounding: {cob_before['adj_hhs_by_parcel'].sum()}")
+            logging.info(f"COB hhs after control rounding: {cob_after['adj_hhs_by_parcel'].sum()}")
+            logging.info(f"total hhs control rounding difference (after - before): {cob_after['cross_check_hhs'].sum()}")
+            logging.info('-----')
+            logging.info(f"COB persons before control rounding: {cob_before['adj_persons_by_parcel'].sum()}")
+            logging.info(f"COB persons after control rounding: {cob_after['adj_persons_by_parcel'].sum()}")
+            logging.info(f"total persons control rounding difference (after - before): {cob_after['cross_check_persons'].sum()}")
+            cob_after.to_csv(os.path.join(working_folder_synpop, 'COB_population_before_after.csv'))
+            logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'COB_population_before_after.csv')}")
 
         if  hhs_control_total_by_TAZ != '':
             # export adjusted hhs by parcel to file

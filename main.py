@@ -1,6 +1,6 @@
 from config import step
 
-def main(run_step=1):
+def main(run_step=1, debug=False):
     """
     Run the following steps one by one. Check the output files each step to make sure the output values make sense.
     Go to *landuse process*:
@@ -41,10 +41,10 @@ def main(run_step=1):
     if run_step == 'A':
         synpop.step_A_interpolate_hhps()
     elif run_step == 'B':
-        synpop.step_B_distribute_hh2parcel()
+        synpop.step_B_distribute_hh2parcel(debug=debug)
     elif run_step == 'C':
         synpop.step_C_parcelization()
     
 
 if __name__ == '__main__':
-    main(run_step=step)
+    main(run_step=step, debug=True)

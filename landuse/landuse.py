@@ -3,6 +3,7 @@ import os, sys
 sys.path.append(os.getcwd())
 
 import h5py
+import random
 import logging
 import pandas as pd
 
@@ -263,14 +264,17 @@ class LandUse:
         # 05/01/2025
         # move the paths into config.py
 
-        self.new_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, new_bellevue_parcel_data_file_name), sep = ',', low_memory = False)
-        self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
+        # 05/22/2025
+        # allowed kirkland input job file to update the original interpolated parcel job data
 
+        self.new_bellevue_parcel_data = pd.read_csv(os.path.join(working_folder_lu, new_bellevue_parcel_data_file_name), sep = ',', low_memory = False)
+        self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
+        # processing Bellevue parcel-level jobs
         logging.info('Processing Bellevue jobs...')
         full_bellevue_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == 'BELLEVUE']
-        actual_bel_parcels_df = self.new_parcel_data_df.loc[self.new_parcel_data_df['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
+        actual_bel_parcels_df = self.new_bellevue_parcel_data.loc[self.new_bellevue_parcel_data['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
         not_in_full_bellevue_parcels = actual_bel_parcels_df.loc[~actual_bel_parcels_df['PSRC_ID'].isin(full_bellevue_parcels_df['PSRC_ID'])]
-        missing_bellevue_parcels_df = self.original_parcel_data_df.loc[self.original_parcel_data_df['PARCELID'].isin(full_bellevue_parcels_df.loc[~full_bellevue_parcels_df['PSRC_ID'].isin(self.new_parcel_data_df['PSRC_ID']), 'PSRC_ID'])]
+        missing_bellevue_parcels_df = self.original_parcel_data_df.loc[self.original_parcel_data_df['PARCELID'].isin(full_bellevue_parcels_df.loc[~full_bellevue_parcels_df['PSRC_ID'].isin(self.new_bellevue_parcel_data['PSRC_ID']), 'PSRC_ID'])]
         if len(not_in_full_bellevue_parcels) > 0:
             fname = os.path.join(working_folder_lu, f'not_valid_bellevue_parcels_{modeller_initial}_{version}.csv')
             not_in_full_bellevue_parcels.to_csv(fname, sep = ',', index = False)
@@ -279,17 +283,107 @@ class LandUse:
             fname = os.path.join(working_folder_lu, f'missing_bellevue_parcels_{modeller_initial}_{version}.csv')
             missing_bellevue_parcels_df.to_csv(fname, sep = ',', index = False)
             logging.warning(f'Some parcels are not covered in the Bellevue lookup table. Exported in {fname}\n')        
-
-        newjobs = self.new_parcel_data_df['EMPTOT_P'].sum() 
-        logging.info(f'New parcel data file has {newjobs:,.0f} jobs.\n')
-        new_parcel_data_df = self.new_parcel_data_df.set_index('PSRC_ID')
+        # compare between the old and new job totals
+        newjobs_bellevue = self.new_bellevue_parcel_data['EMPTOT_P'].sum() 
+        logging.info(f'New Bellevue parcel data file has {newjobs_bellevue:,.0f} jobs.\n')
+        new_bellevue_parcel_data = self.new_bellevue_parcel_data.set_index('PSRC_ID')
         updated_parcel_df = self.original_parcel_data_df.copy()
         updated_parcel_df = updated_parcel_df.set_index('PARCELID')
-        oldjobs = updated_parcel_df.loc[updated_parcel_df.index.isin(new_parcel_data_df.index), 'EMPTOT_P'].sum()
-        logging.info(f'Parcels to be replaced have {oldjobs:,.0f} jobs')
-        logging.info(f'Parcels after change have {newjobs:,.0f} jobs')
-        logging.info(f'Jobs gained {(newjobs - oldjobs):,.0f}\n')
-        updated_parcel_df.loc[updated_parcel_df.index.isin(new_parcel_data_df.index), columns_list] = new_parcel_data_df[columns_list]
+        oldjobs_bellevue = updated_parcel_df.loc[updated_parcel_df.index.isin(new_bellevue_parcel_data.index), 'EMPTOT_P'].sum()
+        logging.info(f'Bellevue parcels to be replaced have {oldjobs_bellevue:,.0f} jobs')
+        logging.info(f'Bellevue parcels after changing have {newjobs_bellevue:,.0f} jobs')
+        logging.info(f'Bellevue jobs gained {(newjobs_bellevue - oldjobs_bellevue):,.0f}\n')
+        updated_parcel_df.loc[updated_parcel_df.index.isin(new_bellevue_parcel_data.index), columns_list] = new_bellevue_parcel_data[columns_list]
+        # process Kirkland parcel-level jobs
+        if new_kirkland_parcel_data_file_name != '':
+            logging.info('Processing Kirkland jobs...')
+            # process the new parcel jobs
+            new_kirkland_parcel_data = pd.read_excel(os.path.join(working_folder_lu, new_kirkland_parcel_data_file_name), sheet_name='Employment', header=2)
+            new_kirkland_parcel_data = new_kirkland_parcel_data[['TAZ', 'Total']].copy(deep=True)
+            new_kirkland_parcel_data.rename(columns={'Total': 'Control', 'TAZ': 'BKRTMTAZ'}, inplace=True)
+            new_kirkland_parcel_data['Control'] = new_kirkland_parcel_data['Control'].round(0)
+            kirkland_parcel_tmtazs = self.lookup_df[self.lookup_df['Jurisdiction']=='KIRKLAND']
+            parcel_data_kirkland = self.original_parcel_data_df[self.original_parcel_data_df['PARCELID'].isin(kirkland_parcel_tmtazs['PSRC_ID'])].copy(deep=True)
+            parcel_data_kirkland = parcel_data_kirkland.merge(self.lookup_df[['Jurisdiction', 'PSRC_ID', 'BKRTMTAZ', 'BKRCastTAZ']], \
+                                                  left_on='PARCELID', right_on='PSRC_ID', how='left')
+            # calculate scaling factor
+            parcel_data_kirkland_tmtaz = parcel_data_kirkland.groupby(by='BKRTMTAZ').sum()['EMPTOT_P'].reset_index()
+            parcel_data_kirkland_tmtaz = parcel_data_kirkland_tmtaz.merge(new_kirkland_parcel_data[['Control', 'BKRTMTAZ']], how='left')
+            parcel_data_kirkland_tmtaz['Control'] = parcel_data_kirkland_tmtaz['Control'].round(0)
+            parcel_data_kirkland_tmtaz['Control'] = parcel_data_kirkland_tmtaz['Control'].astype('float64')
+            parcel_data_kirkland_tmtaz['EMPTOT_P'] = parcel_data_kirkland_tmtaz['EMPTOT_P'].astype('float64')
+            parcel_data_kirkland_tmtaz['scaling factor'] = parcel_data_kirkland_tmtaz['Control'] / parcel_data_kirkland_tmtaz['EMPTOT_P']
+            parcel_data_kirkland_tmtaz['scaling factor'].fillna(0, inplace=True)
+            # use the scaling factor to all the jobs in parcels within the corresponding travel model TAZ (TMTAZ)
+            job_columns = [i for i in columns_list if i != 'EMPTOT_P']
+            parcel_data_kirkland = parcel_data_kirkland.merge(parcel_data_kirkland_tmtaz[['scaling factor', 'BKRTMTAZ']], on='BKRTMTAZ', how='left')
+            for job_column in job_columns:
+                parcel_data_kirkland[f"{job_column}_SCALED"] = (parcel_data_kirkland[job_column].astype('float64') * parcel_data_kirkland['scaling factor']).round(0)
+            job_columns_scaled = [f"{i}_SCALED" for i in columns_list if i != 'EMPTOT_P']
+            parcel_data_kirkland['EMPTOT_P_SCALED'] = parcel_data_kirkland[job_columns_scaled].sum(axis=1)
+            # compare the scaled job number with the control (new parcel data)
+            parcel_data_kirkland_scaled = parcel_data_kirkland.groupby(by='BKRTMTAZ').sum()['EMPTOT_P_SCALED'].reset_index()
+            parcel_data_kirkland_scaled = parcel_data_kirkland_scaled.merge(parcel_data_kirkland_tmtaz[['Control', 'BKRTMTAZ']], how='left')
+            parcel_data_kirkland_scaled['difference'] = parcel_data_kirkland_scaled['EMPTOT_P_SCALED'] - parcel_data_kirkland_scaled['Control']
+            logging.info(f"New Kirkland parcel data file has {parcel_data_kirkland_scaled['Control'].sum():,.0f} jobs.")
+            logging.info(f"Scaled Kirkland parcel data file has {parcel_data_kirkland_scaled['EMPTOT_P_SCALED'].sum():,.0f} jobs.")
+            logging.info(f"Old parcel data file has {parcel_data_kirkland['EMPTOT_P'].sum():,.0f} jobs in Kirkland.")
+            # merge the scaling factor to the table
+            parcel_data_kirkland_scaled = parcel_data_kirkland_scaled.merge(parcel_data_kirkland_tmtaz[['scaling factor', 'BKRTMTAZ']], on='BKRTMTAZ', how='left')
+            # walk through each TMTAZ and distribute the difference back to parcels
+            logging.info(f"(Scaled Kirkland job total - New Kirkland job total) = {parcel_data_kirkland['EMPTOT_P_SCALED'].sum() - new_kirkland_parcel_data['Control'].sum()}")
+            logging.info("\nFinetuning the number of jobs in each parcel in Kirkland...")
+            job_scaled_columns = [f'{i}_SCALED' for i in columns_list if i != 'EMPTOT_P']
+            for _, row in parcel_data_kirkland_scaled.iterrows():
+                tmtaz = row['BKRTMTAZ']
+                difference = row['difference']
+                parcels_in_tmtaz_df = parcel_data_kirkland.loc[(parcel_data_kirkland['BKRTMTAZ'] == tmtaz) & \
+                                                               (parcel_data_kirkland['EMPTOT_P_SCALED'] > 0)]
+                if len(parcels_in_tmtaz_df) == 0: continue
+                if difference < 0:
+                    # need to add more jobs in those parcels that already have jobs
+                    for _ in range(int(abs(difference))):
+                        parcels_in_tmtaz_df = parcel_data_kirkland.loc[(parcel_data_kirkland['BKRTMTAZ'] == tmtaz) & \
+                                                                       (parcel_data_kirkland['EMPTOT_P_SCALED'] > 0)]
+                        parcel_ids = list(parcels_in_tmtaz_df['PARCELID'])
+                        # randomly select a parcel and a job category
+                        selected_parcel = random.choice(parcel_ids)
+                        selected_parcel_df = parcel_data_kirkland[(parcel_data_kirkland['PARCELID']==selected_parcel)][job_scaled_columns]
+                        job_pool = selected_parcel_df.columns[(selected_parcel_df > 0).all()].tolist()
+                        selected_job = random.choice(job_pool)
+                        # add one more job on this job category in this selected parcel
+                        parcel_data_kirkland.loc[parcel_data_kirkland['PARCELID']==selected_parcel, selected_job] += 1
+                        parcel_data_kirkland['EMPTOT_P_SCALED'] = parcel_data_kirkland[job_scaled_columns].sum(axis=1)
+                else:
+                    # need to reduce the number of jobs in those parcels that already have jobs
+                    for _ in range(int(abs(difference))):
+                        parcels_in_tmtaz_df = parcel_data_kirkland.loc[(parcel_data_kirkland['BKRTMTAZ'] == tmtaz) & \
+                                                                       (parcel_data_kirkland['EMPTOT_P_SCALED'] > 0)]
+                        parcel_ids = list(parcels_in_tmtaz_df['PARCELID'])
+                        # randomly select a parcel and a job category
+                        selected_parcel = random.choice(parcel_ids)
+                        selected_parcel_df = parcel_data_kirkland[(parcel_data_kirkland['PARCELID']==selected_parcel)][job_scaled_columns]
+                        job_pool = selected_parcel_df.columns[(selected_parcel_df > 0).all()].tolist()
+                        selected_job = random.choice(job_pool)
+                        # add one more job on this job category in this selected parcel
+                        parcel_data_kirkland.loc[parcel_data_kirkland['PARCELID']==selected_parcel, selected_job] -= 1
+                        parcel_data_kirkland['EMPTOT_P_SCALED'] = parcel_data_kirkland[job_scaled_columns].sum(axis=1)
+            # compare the final scaled job number with the control
+            logging.info('Finetuning jobs in Kikrland complete! Comparing them again...')
+            parcel_data_kirkland_scaled = parcel_data_kirkland.groupby(by='BKRTMTAZ').sum()['EMPTOT_P_SCALED'].reset_index()
+            parcel_data_kirkland_scaled = parcel_data_kirkland_scaled.merge(parcel_data_kirkland_tmtaz[['Control', 'BKRTMTAZ']], how='left')
+            parcel_data_kirkland_scaled['difference'] = parcel_data_kirkland_scaled['EMPTOT_P_SCALED'] - parcel_data_kirkland_scaled['Control']
+            logging.info(f"New Kirkland parcel data file has {parcel_data_kirkland_scaled['Control'].sum():,.0f} jobs.")
+            logging.info(f"Finetuned scaled Kirkland parcel data file has {parcel_data_kirkland_scaled['EMPTOT_P_SCALED'].sum():,.0f} jobs.")
+            logging.info(f"(Finetuned and scaled Kirkland job total - New Kirkland job total) = {parcel_data_kirkland['EMPTOT_P_SCALED'].sum() - new_kirkland_parcel_data['Control'].sum()}")
+            parcel_data_kirkland_scaled.to_csv(os.path.join(working_folder_lu, updated_parcel_file_kirkland_name.split('.')[0] + f'_{modeller_initial}_{version}.csv'))
+            logging.info(f"Exporting Kirkland parcel matching file to: {os.path.join(working_folder_lu, updated_parcel_file_kirkland_name.split('.')[0] + f'_{modeller_initial}_{version}.csv')}\n")
+            # replace the old parcels in Kirkland with those processed parcels
+            logging.info('Replacing the old parcels in Kirkland with the parcels processed with the new numebr of jobs.')
+            parcel_data_kirkland.set_index('PARCELID', inplace=True)
+            job_scaled_columns = [f'{i}_SCALED' for i in columns_list]
+            for job_column in columns_list:
+                updated_parcel_df.loc[updated_parcel_df.index.isin(parcel_data_kirkland.index), job_column] = parcel_data_kirkland[job_column + '_SCALED']
 
         # update the total jobs 
         updated_parcel_df['EMPTOT_P'] = 0

@@ -208,10 +208,13 @@ new_parcel_file_name = 'interpolated_parcel_file_2024_from_PSRC_2014_2050.txt'
 #=====
 ## input paths for step 4
 new_bellevue_parcel_data_file_name = copy.copy(kc_job_file) # r"2023_COB_Jobs_new_method.csv"
+# if have Kirkland job parcel data, put the path below, otherwise put ''
+new_kirkland_parcel_data_file_name = 'Kirkland_2024_land_use_conversion.xlsx' # r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear\Kirkland_2024_land_use_conversion.xlsx'
 original_parcel_file_name = copy.copy(new_parcel_file_name) # r"interpolated_parcel_file_2023_from_PSRC_2014_2050.txt"
 
 ## output paths for step 4
-updated_parcel_file_name =  r"2024_baseyear_parcels_urbansim.txt"
+updated_parcel_file_name = r"2024_baseyear_parcels_urbansim.txt"
+updated_parcel_file_kirkland_name = '2024_Kirkland_parcel_matching.csv'
 
 ## other configurations for step 4
 set_Jobs_to_Zeros_All_Bel_Parcels_Not_in_New_Parcel_Data_File = True

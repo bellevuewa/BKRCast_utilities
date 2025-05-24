@@ -441,7 +441,6 @@ class LandUse:
         parcel_df.drop(['hhexpfac', 'hhsize', 'hhparcel'], axis = 1, inplace = True)
         parcel_df['HH_P'] = parcel_df['HH_P'].round(0).astype(int)
 
-
         logging.info('\nExporting future parcel file...')
         parcel_df.to_csv(os.path.join(working_folder_lu, output_parcel_file), sep = ' ', index = False)
         logging.info(f'Future parcel file is exported in {os.path.join(working_folder_lu, output_parcel_file)}...')

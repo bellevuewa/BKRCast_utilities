@@ -25,7 +25,7 @@ future_year =2050
 #####
 # Land use configurations
 #####
-working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear'
+working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear_with_KirklandData'
 #=====
 # Step 1: Prepare land use data
 #=====
@@ -98,7 +98,7 @@ Jurisdiction = None
 # Synthetic population configurations
 #####
 
-working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear'
+working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear_with_KirklandData'
 #r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear_with_RedmondData'
 
 #=====
@@ -129,7 +129,7 @@ popsim_control_file = 'acecon0403.csv'
 TAZ level control total (households) from Kirkland and Redmond. (can be any TAZ)
 if there is no local estimate from Redmond/Kirkland, set it to ''. 
 """
-hhs_control_total_by_TAZ = ''
+hhs_control_total_by_TAZ_KR = 'Kirkland_2024_HousingUnits_by_BKRTMTAZ.csv'  # under working_folder_lu
 
 ## outputs paths for step B
 hhs_by_taz_comparison_file = "2024_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison" + f'_{modeller_initial}_{version}' + ".csv"

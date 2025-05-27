@@ -25,7 +25,7 @@ future_year =2050
 #####
 # Land use configurations
 #####
-working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear_with_KirklandData'
+working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear'
 #=====
 # Step 1: Prepare land use data
 #=====
@@ -98,7 +98,7 @@ Jurisdiction = None
 # Synthetic population configurations
 #####
 
-working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear_with_KirklandData'
+working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear'
 #r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear_with_RedmondData'
 
 #=====

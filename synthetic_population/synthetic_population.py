@@ -315,15 +315,19 @@ class SynPop:
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df['sfpersons'] + adjusted_hhs_by_parcel_df['mfpersons']
 
         ### Control Rounding
-        ### hhs should not be fractions, so round the hhs to integer, controlled by BKRCastTAZ
+        ### hhs and population should not be fractions, so round the hhs to integer, controlled by BKRCastTAZ
         ### we will use the rounded hhs by parcel as guidance to allocate synthetic households. So controlled rounding is very important here, otherwise we will have more or less 
         ### total households due to rounding error, and we cannot allocate a fraction of a household.
         ### we rely on this rounded hhs by parcel to generate control file (in census block group level) for populationsim
         ### to get correct number of persons by block group, instead of doing controlled rounding, we simply summarize persons by block group before controlled rounding on hhs.
         adj_persons_by_GEOID10 = adjusted_hhs_by_parcel_df[['GEOID10', 'adj_persons_by_parcel']].groupby('GEOID10').sum()
         total_hhs_before_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
+        total_persons_before_rounding = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'].sum()
         logging.info(f'Total number of households before rounding: {total_hhs_before_rounding:,.2f}\n')
         logging.info(f"Total number of households in COB before rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'].sum():,.2f}\n")
+        logging.info('=====')
+        logging.info(f'Total number of persons before rounding: {total_persons_before_rounding:,.2f}\n')
+        logging.info(f"Total number of persons in COB before rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_persons_by_parcel'].sum():,.2f}\n")
         # debug for crosscheck the hh numbers and the population
         if debug:
             cob_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['cobflag']=='cob'].copy(deep=True)
@@ -333,7 +337,7 @@ class SynPop:
                 kr_tazs_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['Jurisdiction'].isin(juris_list)].copy(deep=True)
                 kr_tazs_before_ = kr_tazs_before[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
 
-        logging.info('Rounding households to integer. Controlled by BKRCastTAZ subtotal....')
+        logging.info('Rounding households and persons to integer. Controlled by BKRCastTAZ subtotal....')
         # check if this 2016 file is 'acecon0403.csv'
         if popsim_control_file == 'acecon0403.csv':
             # in ACS 2016 there is no hhs in Census block group 530619900020, but in PSRC's future hhs forecast there are. 
@@ -359,19 +363,22 @@ class SynPop:
                     adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_ids), 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] + diff
                 adjusted_hhs_by_parcel_df.loc[special_parcels_flag, ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
-        adj_hhs_by_BKRCastTAZ = adjusted_hhs_by_parcel_df[['BKRCastTAZ', 'adj_hhs_by_parcel']].groupby('BKRCastTAZ').sum().round(0).astype(int)
+        adj_hhs_by_BKRCastTAZ = adjusted_hhs_by_parcel_df[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby('BKRCastTAZ').sum().round(0).astype(int)
         controlled_taz_hhs = adj_hhs_by_BKRCastTAZ.reset_index().to_dict('records')
 
         for record in controlled_taz_hhs:
             condition = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'])
             adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'].round(0)
-            subtotal = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'].sum()
-            diff = subtotal - record['adj_hhs_by_parcel']
+            adjusted_hhs_by_parcel_df.loc[condition, 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_persons_by_parcel'].round(0)
+            subtotal_hhs = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'].sum()
+            subtotal_persons = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_persons_by_parcel'].sum()
+            diff_hhs = subtotal_hhs - record['adj_hhs_by_parcel']
+            diff_persons = subtotal_persons - record['adj_persons_by_parcel']
             mf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] >= 2)
             sf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] == 1)
             mf_parcels_count = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].shape[0]
             sf_parcels_count = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].shape[0]
-            if diff > 0: 
+            if diff_hhs > 0:
                 # too many hhs in this TAZ after rounding. 
                 # need to bring down subtotal start from mf parcels. 
                 if mf_parcels_count > 0:
@@ -701,56 +708,57 @@ class SynPop:
         # this could be made optional and computed within DaySim for synthetic populations based on ACS PUMS; 
         # for other survey data, the coding and rules may be more variable and better done outside DaySim
         logging.info('Processing attributes...')
+        logging.info('It may take a while as well...\n')
         # assign pno within each household
         pop_df['pno'] = pop_df.groupby('hhno').cumcount() + 1
         #####
-        # Assign pwtyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
+        # Assign pwtyp, pstyp, and pptyp categories. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
         #####
-        pop_df['WKW'].fillna(-1)
-        # full-time worker
-        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pwtyp'] = 1
-        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pptyp'] = 1
-        # part-time worker
-        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pwtyp'] = 2
-        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pptyp'] = 2
+        pwtype = pop_df.WKW.fillna(-1)
+        pop_df.WKW = pwtype
+        pstype = pop_df.pstyp.fillna(-1)
+        pop_df.pstyp = pstype
+        ages = pop_df.pagey
+        for i in range(pop_df.shape[0]):
+            if i % 100000 == 0:
+                print(i, ' persons processed.')
 
-        #####
-        # Assign pstyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
-        #####
-        pop_df.rename(columns={'pstyp': 'pstyp_'}, inplace=True)
-        pop_df['pstyp_'] = pop_df['pstyp_'].fillna(-1)
-        pop_df['pstyp'] = -1        
-        # full-time student
-        pop_df.loc[pop_df['pstyp_'].isin(fullstudents), 'pstyp'] = 1
-        # part-time student
-        pop_df.loc[(pop_df['WKW'].isin(partworkers)) &
-                   (pop_df['pstyp_'].isin(fullstudents)), 'pstyp'] = 2
-        # non-student
-        pop_df.loc[pop_df['pstyp_'].isin(nostudents), 'pstyp'] = 0
+            tmpw = pwtype[i]
+            tmps = pstype[i]
+            tmpage = ages[i]
 
-        #####
-        # Assign pptyp category. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
-        #####
-        # university student
-        pop_df.loc[pop_df['pstyp_'].isin(pp5), 'pptyp'] = 5
-        # grade school student/child age 16+
-        pop_df.loc[pop_df['pstyp_'].isin(pp6), 'pptyp'] = 6
-        # child age 5-15
-        pop_df.loc[pop_df['pstyp_'].isin(pp7), 'pptyp'] = 7
-        # child age 0-4
-        pop_df.loc[pop_df['pstyp_'].isin(pp8), 'pptyp'] = 8
-        # non-worker and over 65 years old
-        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
-                   (pop_df['pagey']>=65), 'pptyp'] = 3
-        # non-worker and over 15 years old
-        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
-                   (pop_df['pagey']>15), 'pptyp'] = 4
-        # non-worker and age between 5-15
-        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
-                   (5<=pop_df['pagey']) * (pop_df['pagey']<=15), 'pptyp'] = 7
-        # non-worker and age between 0-5
-        pop_df.loc[(pop_df['WKW'].isin(noworker)) &
-                   (0<=pop_df['pagey']) * (pop_df['pagey']<5), 'pptyp'] = 8
+            if tmps in nostudents:
+                pop_df['pstyp'].iat[i] = 0
+            elif tmps in fullstudents:
+                pop_df['pstyp'].iat[i] = 1
+
+            if tmpw in noworker:
+                pop_df['pwtyp'].iat[i] = 0
+                if tmpage >= 65:
+                    pop_df['pptyp'].iat[i] = 3
+                elif tmpage > 15:
+                    pop_df['pptyp'].iat[i] = 4
+                elif 5 <= tmpage <= 15:
+                    pop_df['pptyp'].iat[i] = 7
+                elif 0 <= tmpage < 5:
+                    pop_df['pptyp'].iat[i] = 8
+            elif tmpw in fullworkers:
+                pop_df['pwtyp'].iat[i] = 1
+                pop_df['pptyp'].iat[i] = 1
+            elif tmpw in partworkers:
+                pop_df['pptyp'].iat[i] = 2
+                pop_df['pwtyp'].iat[i] = 2
+                if tmps in fullstudents:
+                    pop_df['pstyp'].iat[i] = 2
+
+            if tmps in pp5:
+                pop_df['pptyp'].iat[i] = 5
+            elif tmps in pp6:
+                pop_df['pptyp'].iat[i] = 6
+            elif tmps in pp7:
+                pop_df['pptyp'].iat[i] = 7
+            elif tmps in pp8:
+                pop_df['pptyp'].iat[i] = 8
 
         pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
 

@@ -378,76 +378,18 @@ class SynPop:
             sf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] == 1)
             mf_parcels_count = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].shape[0]
             sf_parcels_count = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].shape[0]
-            if diff_hhs > 0:
-                # too many hhs in this TAZ after rounding. 
-                # need to bring down subtotal start from mf parcels. 
-                if mf_parcels_count > 0:
-                    if mf_parcels_count < diff:
-                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] - 1
-                        diff = diff - mf_parcels_count
-                    else: # number of mf parcels are more than diff, randomly pick diff number of mf parcels and reduce adj_hhs_by_parcel in each parcel by 1
-                        selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(diff))['PSRC_ID']
-                        condition = (adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids))
-                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] - 1
-                        diff = 0
-                # if rounding issue is not resolved yet, deal with it in sf parcel
-                if (diff > 0) and (sf_parcels_count > 0):
-                    if sf_parcels_count < diff: 
-                        adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] - 1
-                        diff = diff - sf_parcels_count
-                    else: # number of sf parcels are more than diff, randomly pick diff number of sf parcels and reduce adj_hhs_by_parcel in each by 1 (set to zero)
-                        selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(diff))['PSRC_ID']
-                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] - 1
-                        diff = 0
-                # last option, if rounding issue is still not resolved, 
-                if diff > 0:
-                    logging.info(f"TAZ {record['BKRCastTAZ']}: rounding issue is not resolved. Difference is {diff}")
-            elif diff < 0:
-                # too less hhs in this TAZ after rounding. need to increase subtotal
-                if mf_parcels_count > 0:
-                    # evenly distribute diff to all mf parcel, then the remaining to a ramdomly selected one
-                    if mf_parcels_count < abs(diff):
-                        increase = math.floor(abs(diff) / mf_parcels_count)
-                        adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, 'adj_hhs_by_parcel'] + increase
-                        diff = diff + increase * mf_parcels_count
-                        selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = 1)['PSRC_ID']
-                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
-                        diff = diff + abs(diff)
-                    else:
-                        # randomly select parcel to increase the number of households
-                        selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
-                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + 1
-                        diff = diff + abs(diff)
-                        
-                else: # if no mf parcel is available, add diff to sf parcels
-                    if sf_parcels_count > 0:
-                        if sf_parcels_count < abs(diff):
-                            increase = math.floor(abs(diff) / sf_parcels_count)
-                            adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, 'adj_hhs_by_parcel'] + increase
-                            diff = diff + increase * sf_parcels_count
-                            selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = 1)['PSRC_ID']
-                            condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                            adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
-                            diff = diff + abs(diff)
-                        else:
-                            selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
-                            condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                            adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + 1
-                            diff = diff + abs(diff)
-                    else:  # last option, add diff to a ramdomly selected parcel
-                        applicable_parcels_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'])
-                        selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[applicable_parcels_flags].sample(n = 1)['PSRC_ID']
-                        condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
-                        adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[condition, 'adj_hhs_by_parcel'] + abs(diff)
+            # control rounding for households and persons
+            adjusted_hhs_by_parcel_df = control_rounding(diff_hhs, adjusted_hhs_by_parcel_df, mf_parcel_flags, sf_parcel_flags, mf_parcels_count, sf_parcels_count, record, 'adj_hhs_by_parcel')
+            adjusted_hhs_by_parcel_df = control_rounding(diff_persons, adjusted_hhs_by_parcel_df, mf_parcel_flags, sf_parcel_flags, mf_parcels_count, sf_parcels_count, record, 'adj_persons_by_parcel')
 
         adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].astype(int)
+        adjusted_hhs_by_parcel_df['adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'].astype(int)
         total_hhs_after_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
-        logging.info('Controlled rounding is complete. ')
+        total_persons_after_rounding = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'].sum()
+        logging.info('Controlled rounding for households and persons is complete. ')
         logging.info(f'\nTotal hhs before rounding: {total_hhs_before_rounding:,.2f}, after: {total_hhs_after_rounding:,.0f}\n')
-        logging.info(f"Total number of households in COB after rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'].sum():,.2f}\n")
+        logging.info(f"Total number of households in COB after rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'].sum():,.0f}")
+        logging.info(f"Total number of persons in COB after rounding: {adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_persons_by_parcel'].sum():,.0f}\n")
         
         if debug:
             # Bellevue
@@ -462,13 +404,13 @@ class SynPop:
                     cob_after.loc[cob_after['BKRCastTAZ']==record['BKRCastTAZ'], 'controlled_persons'] = record['adj_persons_by_parcel']
             cob_after['cross_check_hhs'] = cob_after['adj_hhs_by_parcel'] - cob_after['controlled_hhs']
             cob_after['cross_check_persons'] = cob_after['adj_persons_by_parcel'] - cob_after['controlled_persons']
-            logging.info(f"COB hhs before control rounding: {cob_before['adj_hhs_by_parcel'].sum()}")
-            logging.info(f"COB hhs after control rounding: {cob_after['adj_hhs_by_parcel'].sum()}")
-            logging.info(f"total hhs control rounding difference (after - before): {cob_after['cross_check_hhs'].sum()}")
+            logging.info(f"COB hhs before control rounding: {cob_before['adj_hhs_by_parcel'].sum():,.2f}")
+            logging.info(f"COB hhs after control rounding: {cob_after['adj_hhs_by_parcel'].sum():,.0f}")
+            logging.info(f"total hhs control rounding difference (after - before): {cob_after['cross_check_hhs'].sum():,.2f}")
             logging.info('-----')
-            logging.info(f"COB persons before control rounding: {cob_before['adj_persons_by_parcel'].sum()}")
-            logging.info(f"COB persons after control rounding: {cob_after['adj_persons_by_parcel'].sum()}")
-            logging.info(f"total persons control rounding difference (after - before): {cob_after['cross_check_persons'].sum()}")
+            logging.info(f"COB persons before control rounding: {cob_before['adj_persons_by_parcel'].sum():,.2f}")
+            logging.info(f"COB persons after control rounding: {cob_after['adj_persons_by_parcel'].sum():,.0f}")
+            logging.info(f"total persons control rounding difference (after - before): {cob_after['cross_check_persons'].sum():,.2f}")
             cob_after.to_csv(os.path.join(working_folder_synpop, 'COB_population_before_after.csv'))
             logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'COB_population_before_after.csv')}")
             # Kirkland and Redmond
@@ -502,25 +444,25 @@ class SynPop:
                     # print the comparison summary at the BKRCast TAZ level
                     logging.info('\n')
                     logging.info('=====')
-                    logging.info(f"Kirkland (and Redmond) hhs before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_hhs_by_parcel'].sum()}")
-                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_hhs_by_parcel'].sum()}")
-                    logging.info(f"total hhs control rounding difference (after - before) at the BKRCast TAZ level: {kr_after_taz['cross_check_hhs'].sum()}")
+                    logging.info(f"Kirkland (and Redmond) hhs before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_hhs_by_parcel'].sum():,.2f}")
+                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_hhs_by_parcel'].sum():,.0f}")
+                    logging.info(f"total hhs control rounding difference (after - before) at the BKRCast TAZ level: {kr_after_taz['cross_check_hhs'].sum():,.2f}")
                     logging.info('-----')
-                    logging.info(f"Kirkland (and Redmond) persons before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_persons_by_parcel'].sum()}")
-                    logging.info(f"Kirkland (and Redmond) persons after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_persons_by_parcel'].sum()}")
-                    logging.info(f"total persons control rounding difference (after - before) at the BKRCast TAZ level: {kr_after_taz['cross_check_persons'].sum()}")
+                    logging.info(f"Kirkland (and Redmond) persons before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_persons_by_parcel'].sum():,.2f}")
+                    logging.info(f"Kirkland (and Redmond) persons after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_persons_by_parcel'].sum():,.0f}")
+                    logging.info(f"total persons control rounding difference (after - before) at the BKRCast TAZ level: {kr_after_taz['cross_check_persons'].sum():,.2f}")
                     kr_after_taz.to_csv(os.path.join(working_folder_synpop, 'KirkRed_population_before_after_BKRCastTAZ.csv'))
                     logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'KirkRed_population_before_after_BKRCastTAZ.csv')}")
                     logging.info('\n')
                     logging.info('=====')
                     # print the comparison summary at the TMTAZ level
-                    logging.info(f"Kirkland (and Redmond) control hhs at the TMTAZ level: {kr_after_tmtaz['controlled_hhs'].sum()}")
-                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the TMTAZ level: {kr_after_tmtaz['adj_hhs_by_parcel'].sum()}")
-                    logging.info(f"total hhs control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_hhs'].sum()}")
+                    logging.info(f"Kirkland (and Redmond) control hhs at the TMTAZ level: {kr_after_tmtaz['controlled_hhs'].sum():,.0f}")
+                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the TMTAZ level: {kr_after_tmtaz['adj_hhs_by_parcel'].sum():,.0f}")
+                    logging.info(f"total hhs control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_hhs'].sum():,.2f}")
                     logging.info('-----')
-                    logging.info(f"Kirkland (and Redmond) control persons at the BKRCast TAZ level: {hhs_by_TAZ_df['total_persons_control'].sum()}")
-                    logging.info(f"Kirkland (and Redmond) persons after control rounding at the BKRCast TAZ level: {kr_after_tmtaz['adj_persons_by_parcel'].sum()}")
-                    logging.info(f"total persons control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_persons'].sum()}")
+                    logging.info(f"Kirkland (and Redmond) control persons at the BKRCast TAZ level: {hhs_by_TAZ_df['total_persons_control'].sum():,.0f}")
+                    logging.info(f"Kirkland (and Redmond) persons after control rounding at the BKRCast TAZ level: {kr_after_tmtaz['adj_persons_by_parcel'].sum():,.0f}")
+                    logging.info(f"total persons control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_persons'].sum():,.2f}")
                     kr_after_taz.to_csv(os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv'))
                     logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv')}\n")
 
@@ -788,3 +730,71 @@ class SynPop:
         logging.info(f'Final number of households: {final_hhs_df.shape[0]:,.0f}')
         logging.info(f'Final number of persons: {pop_df.shape[0]:,.0f}')
         logging.info(f'Executing step C...done. Allocating the synthetic households and persons to control parcels is completed.\n')
+
+
+def control_rounding(diff, adjusted_hhs_by_parcel_df, mf_parcel_flags, sf_parcel_flags, mf_parcels_count, sf_parcels_count, record, col):
+    if diff > 0:
+        # too many hhs or persons in this TAZ after rounding. 
+        # need to bring down subtotal start from mf parcels. 
+        if mf_parcels_count > 0:
+            if mf_parcels_count < diff:
+                adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, col] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, col] - 1
+                diff = diff - mf_parcels_count
+            else: # number of mf parcels are more than diff, randomly pick diff number of mf parcels and reduce adj_hhs_by_parcel in each parcel by 1
+                selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(diff))['PSRC_ID']
+                condition = (adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids))
+                adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] - 1
+                diff = 0
+        # if rounding issue is not resolved yet, deal with it in sf parcel
+        if (diff > 0) and (sf_parcels_count > 0):
+            if sf_parcels_count < diff: 
+                adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, col] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, col] - 1
+                diff = diff - sf_parcels_count
+            else: # number of sf parcels are more than diff, randomly pick diff number of sf parcels and reduce adj_hhs_by_parcel in each by 1 (set to zero)
+                selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(diff))['PSRC_ID']
+                condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] - 1
+                diff = 0
+        # last option, if rounding issue is still not resolved, 
+        if diff > 0:
+            logging.info(f"TAZ {record['BKRCastTAZ']}: household rounding issue is not resolved. Difference is {diff}")
+    elif diff < 0:
+        # too less hhs or persons in this TAZ after rounding. need to increase subtotal
+        if mf_parcels_count > 0:
+            # evenly distribute diff to all mf parcel, then the remaining to a ramdomly selected one
+            if mf_parcels_count < abs(diff):
+                increase = math.floor(abs(diff) / mf_parcels_count)
+                adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, col] = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags, col] + increase
+                diff = diff + increase * mf_parcels_count
+                selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = 1)['PSRC_ID']
+                condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] + abs(diff)
+                diff = diff + abs(diff)
+            else:
+                # randomly select parcel to increase the number of households
+                selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[mf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
+                condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] + 1
+                diff = diff + abs(diff)
+                
+        else: # if no mf parcel is available, add diff to sf parcels
+            if sf_parcels_count > 0:
+                if sf_parcels_count < abs(diff):
+                    increase = math.floor(abs(diff) / sf_parcels_count)
+                    adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, col] = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags, col] + increase
+                    diff = diff + increase * sf_parcels_count
+                    selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = 1)['PSRC_ID']
+                    condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                    adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] + abs(diff)
+                    diff = diff + abs(diff)
+                else:
+                    selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[sf_parcel_flags].sample(n = int(abs(diff)))['PSRC_ID']
+                    condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                    adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] + 1
+                    diff = diff + abs(diff)
+            else:  # last option, add diff to a ramdomly selected parcel
+                applicable_parcels_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'])
+                selected_parcel_ids = adjusted_hhs_by_parcel_df.loc[applicable_parcels_flags].sample(n = 1)['PSRC_ID']
+                condition = adjusted_hhs_by_parcel_df['PSRC_ID'].isin(selected_parcel_ids)
+                adjusted_hhs_by_parcel_df.loc[condition, col] = adjusted_hhs_by_parcel_df.loc[condition, col] + abs(diff)
+    return adjusted_hhs_by_parcel_df

@@ -165,4 +165,4 @@ if __name__ == '__main__':
     And we need to check if the new version of step C yeilds the same results as the previous version.
     Uncomment the following line to run the check for step C.
     """
-    check_rewrite_stepC_correctly()
+    # check_rewrite_stepC_correctly()

@@ -688,51 +688,30 @@ class SynPop:
         #####
         # Assign pwtyp, pstyp, and pptyp categories. Categories referred to https://github.com/psrc/soundcast/wiki/Inputs
         #####
-        pwtype = pop_df.WKW.fillna(-1)
-        pop_df.WKW = pwtype
-        pstype = pop_df.pstyp.fillna(-1)
-        pop_df.pstyp = pstype
-        ages = pop_df.pagey
-        for i in range(pop_df.shape[0]):
-            if i % 100000 == 0:
-                print(i, ' persons processed.')
+        pop_df['WKW'] = pop_df['WKW'].fillna(-1)
+        pop_df['pstyp'] = pop_df['pstyp'].fillna(-1)
+        pop_df['pstyp_'] = pop_df['pstyp'].copy()
 
-            tmpw = pwtype[i]
-            tmps = pstype[i]
-            tmpage = ages[i]
+        pop_df.loc[pop_df['pstyp_'].isin(nostudents), 'pstyp'] = 0
+        pop_df.loc[pop_df['pstyp_'].isin(fullstudents), 'pstyp'] = 1
 
-            if tmps in nostudents:
-                pop_df['pstyp'].iat[i] = 0
-            elif tmps in fullstudents:
-                pop_df['pstyp'].iat[i] = 1
+        pop_df.loc[pop_df['WKW'].isin(noworker), 'pwtyp'] = 0
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) & (pop_df['pagey']>=65), 'pptyp'] = 3
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) & (15<pop_df['pagey']) & (pop_df['pagey']<65), 'pptyp'] = 4
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) & (5<=pop_df['pagey']) & (pop_df['pagey']<=15), 'pptyp'] = 7
+        pop_df.loc[(pop_df['WKW'].isin(noworker)) & (0<=pop_df['pagey']) & (pop_df['pagey']<5), 'pptyp'] = 8
 
-            if tmpw in noworker:
-                pop_df['pwtyp'].iat[i] = 0
-                if tmpage >= 65:
-                    pop_df['pptyp'].iat[i] = 3
-                elif tmpage > 15:
-                    pop_df['pptyp'].iat[i] = 4
-                elif 5 <= tmpage <= 15:
-                    pop_df['pptyp'].iat[i] = 7
-                elif 0 <= tmpage < 5:
-                    pop_df['pptyp'].iat[i] = 8
-            elif tmpw in fullworkers:
-                pop_df['pwtyp'].iat[i] = 1
-                pop_df['pptyp'].iat[i] = 1
-            elif tmpw in partworkers:
-                pop_df['pptyp'].iat[i] = 2
-                pop_df['pwtyp'].iat[i] = 2
-                if tmps in fullstudents:
-                    pop_df['pstyp'].iat[i] = 2
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pwtyp'] = 1
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pptyp'] = 1
 
-            if tmps in pp5:
-                pop_df['pptyp'].iat[i] = 5
-            elif tmps in pp6:
-                pop_df['pptyp'].iat[i] = 6
-            elif tmps in pp7:
-                pop_df['pptyp'].iat[i] = 7
-            elif tmps in pp8:
-                pop_df['pptyp'].iat[i] = 8
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pwtyp'] = 2
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pptyp'] = 2
+        pop_df.loc[(pop_df['WKW'].isin(partworkers)) & (pop_df['pstyp_'].isin(fullstudents)), 'pstyp'] = 2
+
+        pop_df.loc[pop_df['pstyp_'].isin(pp5), 'pptyp'] = 5
+        pop_df.loc[pop_df['pstyp_'].isin(pp6), 'pptyp'] = 6
+        pop_df.loc[pop_df['pstyp_'].isin(pp7), 'pptyp'] = 7
+        pop_df.loc[pop_df['pstyp_'].isin(pp8), 'pptyp'] = 8
 
         pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
 

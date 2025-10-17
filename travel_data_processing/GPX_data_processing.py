@@ -8,6 +8,7 @@ from PyQt6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QFileDialog, QLabel, QMessageBox, QLineEdit, QSizePolicy
 )
 from PyQt6.QtCore import Qt
+from datetime import timezone
 
 # === USER SETTINGS ===
 projected_crs = "EPSG:2285"  # NAD83 / Washington North (ftUS)
@@ -150,8 +151,16 @@ class GPXConverterGUI(QWidget):
                 for track in gpx.tracks:
                     for segment in track.segments:
                         for pt in segment.points:
+                            # convert GPX time to system local timezone
+                            pt_time = pt.time
+                            if pt_time is not None:
+                                # treat naive datetimes as UTC, then convert to local
+                                if pt_time.tzinfo is None:
+                                    pt_time = pt_time.replace(tzinfo=timezone.utc).astimezone()
+                                else:
+                                    pt_time = pt_time.astimezone()
                             points_data.append({
-                                "time": pt.time,
+                                "time": pt_time,
                                 "geometry": Point(pt.longitude, pt.latitude)
                             })
             if not points_data:

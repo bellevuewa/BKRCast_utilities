@@ -5,11 +5,12 @@ from datetime import datetime
 import pandas as pd
 from PyQt6.QtWidgets import (
     QWidget, QLabel, QPushButton, QCheckBox,
-    QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox, QDialog,
+    QFileDialog, QVBoxLayout, QHBoxLayout, QMessageBox, QDialog,
     QListWidget, QSizePolicy
 )
 
-from utility import *
+from utility import ( dialog_level, IndentAdapter, job_rename_dict, sqft_rename_dict, du_rename_dict, 
+                     Job_Categories)
 from GUI_support_utilities import (Shared_GUI_Widgets)
 
 class LUPreprocessUserInterface(QDialog, Shared_GUI_Widgets):

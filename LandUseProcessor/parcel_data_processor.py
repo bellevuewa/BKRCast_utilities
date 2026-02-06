@@ -283,7 +283,7 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
 
     def assemble(self):
         """Start assembly in a background thread."""
-        self.assemble_btn.setEnabled(False)
+        self.disableAllButtons()
         self.status_sections[0].setText("Running")
         
         self.worker = ProcessorWorker(self)
@@ -437,14 +437,14 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
 
     def _on_assembly_finished(self):
         """Called when assembly thread finishes."""
-        self.assemble_btn.setEnabled(True)
+        self.enableAllButtons()
 
     def _on_assembly_error(self, error_msg):
         """Called when assembly thread encounters an error."""
         logging.error(f"Assemble process failed: {error_msg}", exc_info=True)
         self.status_sections[0].setText("Error")
         self.status_sections[1].setText(error_msg)
-        self.assemble_btn.setEnabled(True)
+        self.enableAllButtons()
         QMessageBox.critical(self, "Error", error_msg)
 
 if __name__ == "__main__":

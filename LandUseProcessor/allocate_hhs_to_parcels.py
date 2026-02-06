@@ -1,21 +1,14 @@
 import sys, os
 sys.path.append(os.getcwd())
 import logging
-import traceback
-
 import pandas as pd
 import numpy as np
 import h5py
 from pathlib import Path
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton, QDoubleSpinBox,
-    QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QSplitter,
-    QTableWidget, QTableWidgetItem, QMainWindow, QTabWidget, QListWidget, QDialog, QHeaderView, QAbstractSpinBox
-)
-from PyQt6.QtGui import QDoubleValidator
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
-from utility import IndentAdapter, dialog_level, SynPopAssumptions, df_to_h5
+      QLabel, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog)
+from GUI_support_utilities import (Shared_GUI_Widgets)
+from utility import IndentAdapter, dialog_level, df_to_h5
 from synthetic_population import SyntheticPopulation
 from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
 
@@ -138,19 +131,14 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
        
     def allocate_button_clicked(self):
         self.status_sections[0].setText("Allocating households...")
-
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
 
         output_filename = f'{self.horizon_year}_{self.scenario_name}_hhs_and_persons.h5'
         self.worker = ThreadWrapper(self.allocate_households, output_filename)
-        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(btns, self.status_sections[0], ret))
-        self.worker.error.connect(lambda message: self._on_process_thread_error(btns, self.status_sections[0], message))
+        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(self.status_sections[0], ret))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
         self.worker.start()
-               
  
-
     def allocate_households(self, output_filename):
         import debugpy
         debugpy.breakpoint()
@@ -309,18 +297,17 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
 
     def validate_button_clicked(self):
         self.status_sections[0].setText("Validating")
-        self.valid_btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.final_synpop.validate_hhs_persons)
-        self.worker.finished.connect(lambda validate_dict: self._on_valid_thread_finished([self.valid_btn, self.summarize_btn], validate_dict))
-        self.worker.error.connect(lambda message: self._on_process_thread_error([self.valid_btn, self.summarize_btn], self.status_sections[0], message))
+        self.worker.finished.connect(lambda validate_dict: self._on_valid_thread_finished(validate_dict))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
         self.worker.start()
         
 
-    def _on_valid_thread_finished(self, btns, validate_dict):
+    def _on_valid_thread_finished(self, validate_dict):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
         
         self.status_sections[0].setText("Done")
         # Add validation logic here
@@ -330,18 +317,16 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
 
     def summarize_button_clicked(self):
         self.status_sections[0].setText("Summarizing")
-        self.valid_btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.final_synpop.summarize_synpop, self.output_dir, 'final synthetic population')
         self.worker.finished.connect(lambda summary_dict: self._on_summary_thread_finished(summary_dict))
-        self.worker.error.connect(lambda message: self._on_process_thread_error([self.valid_btn, self.summarize_btn], self.status_sections[0], message))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
         self.worker.start()
 
     def _on_summary_thread_finished(self, data_dict):
         self.status_sections[0].setText("Done")
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
 
         summary_dialog = ValidationAndSummary(self, "Base Synthetic Population Summary", data_dict)
         summary_dialog.exec()       

@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QApplication, QMessageBox, QMenu, QStatusBar, QLabel, QTableWidget, QTableWidgetItem,
-    QSizePolicy, QWidget, QVBoxLayout, QListWidget,
+    QSizePolicy, QWidget, QVBoxLayout, QListWidget, QPushButton
     )
 
 from PyQt6.QtGui import QAction 
@@ -8,18 +8,27 @@ from PyQt6.QtGui import QAction
 import pandas as pd
 
 class Shared_GUI_Widgets:
-    def _on_process_thread_error(self, btns, status_bar_section, e):
-        # called when the thread encounters an error
+    def enableAllButtons(self, btns: list = None):
+        if btns == None:
+            btns = self.findChildren(QPushButton)
         for btn in btns:
             btn.setEnabled(True)
+
+    def disableAllButtons(self, btns: list = None):
+        if btns == None:
+            btns = self.findChildren(QPushButton)
+        for btn in btns:
+            btn.setEnabled(False)
+
+    def _on_process_thread_error(self, status_bar_section, e):
+        # called when the thread encounters an error
+        self.enableAllButtons()
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", str(e))
 
-    def _on_process_thread_finished(self, btns, statusbar_section, ret):
+    def _on_process_thread_finished(self, statusbar_section, ret):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
-        
+        self.enableAllButtons()        
         statusbar_section.setText("Done")        
 
     def make_list_panel(self, title, items, v_policy=QSizePolicy.Policy.Expanding):

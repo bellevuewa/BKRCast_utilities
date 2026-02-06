@@ -167,14 +167,12 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
             return          
         
         self.status_sections[0].setText("synchronizing")
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.final_parcel.sync_with_synthetic_population, popsim_name)
         
-        self.worker.finished.connect(lambda: self._on_sync_thread_finished(btns)) # lambda is important
-        self.worker.error.connect(lambda message: self._on_valid_thread_error(btns, self.status_sections[0], message))
+        self.worker.finished.connect(lambda: self._on_sync_thread_finished()) # lambda is important
+        self.worker.error.connect(lambda message: self._on_valid_thread_error(self.status_sections[0], message))
         self.worker.start()
 
     def preload_rules(self):
@@ -226,23 +224,21 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
 
     def validate_files(self):
         self.status_sections[0].setText("running")
-        self.valid_btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.final_parcel.validate_parcel_file)
         self.worker.finished.connect(lambda validate_dict: self._on_valid_thread_finished([self.valid_btn, self.summarize_btn], validate_dict))
         self.worker.error.connect(lambda message: self._on_valid_thread_error([self.valid_btn, self.summarize_btn], self.status_sections[0], message))
         self.worker.start()
         
-    def _on_sync_thread_finished(self, btns):
-        for btn in btns:
-            btn.setEnabled(True)
+    def _on_sync_thread_finished(self, btns=None):
+        self.enableAllButtons(btns)
         
         self.status_sections[0].setText("Done")   
 
     def _on_valid_thread_finished(self, btns, validate_dict):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
         
         self.status_sections[0].setText("Done")
         # Add validation logic here
@@ -250,9 +246,9 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         valid_dialog.exec()
         self.status_sections[0].setText("")
 
-    def _on_valid_thread_error(self, btn, status_bar_section, message):
+    def _on_valid_thread_error(self, status_bar_section, message):
         # called when the thread encounters an error
-        btn.setEnabled(True)
+        self.enableAllButtons()
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", message)
 
@@ -297,12 +293,10 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         self.status_sections[0].setText("Processing")
         self.process_rules = self.table_to_list_of_dicts(self.rule_table)
 
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
         self.worker = ThreadWrapper(self.parcel_process)
-        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(btns, ret))
-        self.worker.error.connect(lambda message: self._on_process_thread_error(btns, self.status_sections[0], message))
+        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(ret))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
         self.worker.start()
 
     def parcel_process(self) -> dict:
@@ -319,20 +313,17 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         self.final_parcel = op.export_updated_parcels()
         return ret
 
-    def _on_process_thread_finished(self, btns, ret):
+    def _on_process_thread_finished(self, ret, btns = None):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons(btns)
         
         self.status_sections[0].setText("Done")
 
     def _on_process_thread_error(self, btns, status_bar_section, e):
         # called when the thread encounters an error
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons(btns)
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", str(e))
-
 
     def closeEvent(self, event):
         """Handle the close event to ensure proper cleanup."""
@@ -519,19 +510,9 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
             self.logger.info(f"Selected base parcel file: {path}")
         return
     
-    def changeButtonStatus(self, buttons, Enabled):
-        if buttons:
-            for btn in buttons:
-                btn.setEnabled(Enabled)
-
     def interpolation_btn_clicked(self):
         self.status_sections[0].setText("interpolating")
-        btns = self.findChildren(QPushButton)
-        self.changeButtonStatus(btns, False)
-
-        self.valid_btn.setEnabled(False)
-        self.summarize_btn.setEnabled(False)
-        self.interpolate_btn.setEnabled(False)
+        self.disableAllButtons()
 
         if (self.table.item(0,1).text().strip().isdigit() == False) or (self.table.item(1,1).text().strip().isdigit() == False):
             QMessageBox.critical(self, "Error", "Check horizon years for interpolation.")
@@ -553,8 +534,8 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
         upper_path = base_year_dict['upper']['path']
 
         self.worker = ThreadWrapper(self.interpolate_two_parcel_files, lower_path, upper_path, lower, upper, self.parent().horizon_year)
-        self.worker.finished.connect(lambda interpolation_parcel: self._on_interpolation_finished(btns, interpolation_parcel))
-        self.worker.error.connect(lambda eobj: self._on_interpolation_error(btns, eobj))
+        self.worker.finished.connect(lambda interpolation_parcel: self._on_interpolation_finished(interpolation_parcel))
+        self.worker.error.connect(lambda eobj: self._on_interpolation_error(eobj))
         self.worker.start()
 
     def interpolate_two_parcel_files(self, lower_path, upper_path, lower_year, upper_year, horizon_year):
@@ -574,32 +555,31 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
         interpolated_parcels = interpolation.interpolate(left_parcels, right_parcels, horizon_year)
         return interpolated_parcels
 
-    def _on_interpolation_finished(self, btns, parcels : Parcels):
+    def _on_interpolation_finished(self, parcels : Parcels):
         self.base_parcel = parcels
-        self.changeButtonStatus(btns, True)
+        self.enableAllButtons()
         self.status_sections[0].setText('Done')
         self.base_filename_label.setText(self.base_parcel.filename)
         self.base_file = self.base_parcel.filename
 
-    def _on_interpolation_error(self, btns, exception_obj):
+    def _on_interpolation_error(self, exception_obj):
         # called when the thread encounters an error
-        self.changeButtonStatus(btns, True)
+        self.enableAllButtons()
         self.status_sections[0].setText("interpolation failed")
         QMessageBox.critical(self, "Error", str(exception_obj))
                              
     def validate_btn_clicked(self):
         self.status_sections[0].setText("running")
-        self.valid_btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.base_parcel.validate_parcel_file)
-        self.worker.finished.connect(lambda validate_dict: self._on_validation_finished([self.valid_btn, self.summarize_btn], validate_dict))
-        self.worker.error.connect(lambda message: self._on_validation_error([self.valid_btn, self.summarize_btn], self.status_sections[0], message))
+        self.worker.finished.connect(lambda validate_dict: self._on_validation_finished(validate_dict))
+        self.worker.error.connect(lambda message: self._on_validation_error(self.status_sections[0], message))
         self.worker.start()
         
-    def _on_validation_finished(self, btns, validate_dict):
+    def _on_validation_finished(self, validate_dict):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
         
         self.status_sections[0].setText("Done")
         # Add validation logic here
@@ -607,9 +587,9 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
         valid_dialog.exec()
         self.status_sections[0].setText("")
 
-    def _on_validation_error(self, btn, status_bar_section, message):
+    def _on_validation_error(self, status_bar_section, message):
         # called when the thread encounters an error
-        btn.setEnabled(True)
+        self.enableAllButtons()
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", message)
 

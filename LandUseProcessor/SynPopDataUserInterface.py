@@ -1,25 +1,25 @@
 import sys, os
 sys.path.append(os.getcwd())
 import logging
-import traceback
 
-import pandas as pd
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton, QDoubleSpinBox,
-    QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QSplitter,
-    QTableWidget, QTableWidgetItem, QMainWindow, QTabWidget, QListWidget, QDialog, QHeaderView, QAbstractSpinBox
+     QWidget, QLabel, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox, 
+     QSizePolicy, QSplitter, QTableWidget,
+    QTableWidget, QTableWidgetItem,    QDialog, QHeaderView
 )
 from PyQt6.QtGui import QDoubleValidator
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt
 from enum import Enum
 from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
 from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
 from synpop_interpolation import LinearSynPopInterpolator
 from Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
-from utility import IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method
+from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
+                     Summary_Categories, )
 from synthetic_population import SyntheticPopulation
 from SynPopDataOperations import SynPopDataOperations
+
 
 class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
     def __init__(self, project_setting, parent = None):
@@ -212,12 +212,10 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
         self.status_sections[0].setText("Processing")
         self.process_rules = self.table_to_list_of_dicts(self.rule_table)
 
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
         self.worker = ThreadWrapper(self.synpop_process)
-        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(btns, self.status_sections[0], ret))
-        self.worker.error.connect(lambda message: self._on_process_thread_error(btns, self.status_sections[0], message))
+        self.worker.finished.connect(lambda ret: self._on_process_thread_finished(self.status_sections[0], ret))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
         self.worker.start()
 
     def synpop_process(self) -> dict:
@@ -367,7 +365,7 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
                     self, message, "",
                     "HDF5 Files (*.h5);;All Files(*.*)"
                 )
-        if (path is not None) and (label is not None):
+        if (path !='') and (label is not None):
             label.setText(path)
             self.sel1_btn.setEnabled(False)
             self.sel2_btn.setEnabled(False)
@@ -399,19 +397,9 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
             self.logger.info(f"Selected block group template file: {path}")
         return
     
-    def changeButtonStatus(self, buttons, Enabled):
-        if buttons:
-            for btn in buttons:
-                btn.setEnabled(Enabled)
-
     def interpolation_btn_clicked(self):
         self.status_sections[0].setText("interpolating")
-        btns = self.findChildren(QPushButton)
-        self.changeButtonStatus(btns, False)
-
-        self.valid_btn.setEnabled(False)
-        self.summarize_btn.setEnabled(False)
-        self.interpolate_btn.setEnabled(False)
+        self.disableAllButtons()
 
         if (self.table.item(0,1).text().strip().isdigit() == False) or (self.table.item(1,1).text().strip().isdigit() == False):
             QMessageBox.critical(self, "Error", "Check horizon years for interpolation.")
@@ -433,8 +421,8 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
         upper_path = base_year_dict['upper']['path']
 
         self.worker = ThreadWrapper(self.interpolate_two_pop_files, lower_path, upper_path, lower, upper, self.parent().horizon_year)
-        self.worker.finished.connect(lambda interpolated_synpop: self._on_interpolation_finished(btns, interpolated_synpop))
-        self.worker.error.connect(lambda eobj: self._on_interpolation_error(btns, eobj))
+        self.worker.finished.connect(lambda interpolated_synpop: self._on_interpolation_finished(interpolated_synpop))
+        self.worker.error.connect(lambda eobj: self._on_interpolation_error(eobj))
         self.worker.start()
 
     def interpolate_two_pop_files(self, lower_path, upper_path, lower_year, upper_year, horizon_year):
@@ -454,32 +442,31 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
         interpolated_synpop = interpolation.interpolate(left_synpop, right_synpop, horizon_year)
         return interpolated_synpop
 
-    def _on_interpolation_finished(self, btns, synpop : SyntheticPopulation):
+    def _on_interpolation_finished(self, synpop : SyntheticPopulation):
         self.base_synpop = synpop
-        self.changeButtonStatus(btns, True)
+        self.enableAllButtons()
         self.status_sections[0].setText('Done')
         self.base_filename_label.setText(self.base_synpop.filename)
         self.base_file = self.base_synpop.filename
 
-    def _on_interpolation_error(self, btns, exception_obj):
+    def _on_interpolation_error(self, exception_obj):
         # called when the thread encounters an error
-        self.changeButtonStatus(btns, True)
+        self.enableAllButtons()
         self.status_sections[0].setText("interpolation failed")
         QMessageBox.critical(self, "Error", str(exception_obj))
                              
     def validate_btn_clicked(self):
         self.status_sections[0].setText("running")
-        self.valid_btn.setEnabled(False)
+        self.disableAllButtons()
 
         self.worker = ThreadWrapper(self.base_synpop.validate_hhs_persons)
-        self.worker.finished.connect(lambda validate_dict: self._on_validation_finished([self.valid_btn, self.summarize_btn], validate_dict))
-        self.worker.error.connect(lambda message: self._on_validation_error([self.valid_btn, self.summarize_btn], self.status_sections[0], message))
+        self.worker.finished.connect(lambda validate_dict: self._on_validation_finished(validate_dict))
+        self.worker.error.connect(lambda message: self._on_validation_error(self.status_sections[0], message))
         self.worker.start()
         
-    def _on_validation_finished(self, btns, validate_dict):
+    def _on_validation_finished(self, validate_dict):
         # called when the thread is finished
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
         
         self.status_sections[0].setText("Done")
         # Add validation logic here
@@ -487,28 +474,24 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
         valid_dialog.exec()
         self.status_sections[0].setText("")
 
-    def _on_validation_error(self, btn, status_bar_section, message):
+    def _on_validation_error(self, status_bar_section, message):
         # called when the thread encounters an error
-        btn.setEnabled(True)
+        self.enableAllButtons()
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", message)
 
     def summarize_btn_clicked(self):
         self.status_sections[0].setText("running")
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
         
         self.worker = ThreadWrapper(self.base_synpop.summarize_synpop, self.parent().output_dir, 'base', False, True)
         self.worker.finished.connect(lambda summary_dict: self._on_summary_thread_finished(summary_dict))
-        self.worker.error.connect(lambda message: self._on_validation_error(self.summarize_btn, self.status_sections[0], message))
+        self.worker.error.connect(lambda message: self._on_validation_error(self.status_sections[0], message))
         self.worker.start()
 
     def _on_summary_thread_finished(self, data_dict):
         self.status_sections[0].setText("Done")
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
 
         summary_dialog = ValidationAndSummary(self, "Base Synthetic Population Summary", data_dict)
         summary_dialog.exec()           

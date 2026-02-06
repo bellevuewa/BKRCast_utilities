@@ -20,8 +20,6 @@ from allocate_hhs_to_parcels import HouseholdAllocation
 from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
 from synthetic_population import SyntheticPopulation
 from Parcels import Parcels
-
-
 from utility import setup_logger_file, dialog_level, _LOGGING_CONFIGURED
 
 
@@ -48,8 +46,8 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         self.year_box.setText(str(self.project_settings['horizon_year']))
         self.scen_input_editbox.setText(self.project_settings['scenario_name'])
 
-        self.logger = None
-        self.indent = 0
+        self.logger = None # to be initialized after output dir is selected.
+        self.indent = 0 # for log entry
         
     def _init_ui(self):
         """Initialize the user interface."""
@@ -124,9 +122,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         new_parcels_button.clicked.connect(self.new_parcels_btn_clicked)
         self.main_layout.addWidget(new_parcels_button)
 
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
+        self.disableAllButtons()
         output_button.setEnabled(True)
 
     def load_settings(self):
@@ -182,7 +178,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         file_name, _ = QFileDialog.getOpenFileName(self, "Select Parcel Lookup File", "", "CSV Files (*.csv);;All Files (*)")
         if file_name:
             self.logger.info(f"Selected parcel lookup file: {file_name}")
-            self.project_settings['lookup_df'] = pd.read_csv(file_name)
+            self.project_settings['lookup_df'] = pd.read_csv(file_name, low_memory=False)
             self.project_settings['lookup_file'] = file_name
             self.status_sections[1].setText("Parcel lookup file loaded.")
 
@@ -193,25 +189,23 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         if path:
             self.output_label.setText(path)
             self.project_settings["output_dir"] = path
-            self.logger = setup_logger_file(path, f'land_use_data_processor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            horizon_year = int(self.year_box.text()) if self.year_box.text().isdigit() else -1
+            self.logger = setup_logger_file(path, f'{horizon_year}_{self.scen_input_editbox.text().strip()}_land_use_data_processor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
             self.logger.info(f"Output folder set to: {path}")
             self.status_sections[0].setText("log initialized.")
-            btns = self.findChildren(QPushButton)
-            for btn in btns:
-                btn.setEnabled(True)
+            self.enableAllButtons()
 
             self.indent = dialog_level(self)
 
     def parcel_btn_clicked(self):
         self.load_settings()
         parcel_processor = ParcelProcessor()
-        parcel_processor.show()
+        parcel_processor.exec()
 
     def popsim_button_clicked(self):
         self.load_settings()
         processor = SynPopDataUserInterface(self.project_settings, self)
-        processor.show()
-        return
+        processor.exec()
     
     def new_parcels_btn_clicked(self):
         self.load_settings()
@@ -232,7 +226,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
     def allocate_parcel_button_clicked(self):
         self.load_settings()
         dialog = HouseholdAllocation(self.project_settings, self)
-        dialog.show()
+        dialog.exec()
 
     def sum_popsim_button_clicked(self):
         if (self.project_settings['subarea_df'] is None):
@@ -253,10 +247,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         synpop = SyntheticPopulation(self.project_settings['subarea_file'], self.project_settings['lookup_file'],
                                      file_name, self.project_settings['horizon_year'], self.indent + 1)
 
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(False)
-
+        self.disableAllButtons()
         self.worker = ThreadWrapper(synpop.summarize_synpop, self.project_settings['output_dir'], '', False, True)
         self.worker.finished.connect(lambda summary_dict: self._on_summary_thread_finished(summary_dict, "Synthetic Population Summary"))
         self.worker.error.connect(lambda message: self._on_process_thread_error(self.summarize_btn, self.status_sections[0], message))
@@ -264,9 +255,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
 
     def _on_summary_thread_finished(self, data_dict, message):
         self.status_sections[0].setText("Done")
-        btns = self.findChildren(QPushButton)
-        for btn in btns:
-            btn.setEnabled(True)
+        self.enableAllButtons()
 
         summary_dialog = ValidationAndSummary(self, message, data_dict)
         summary_dialog.exec()            
@@ -292,7 +281,14 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         self.worker.error.connect(lambda message: self._on_process_thread_error(self.summarize_btn, self.status_sections[0], message))
         self.worker.start()       
 
-    def summarize_parcel_data(self, parcel_filename): 
+    def summarize_parcel_data(self, parcel_filename) -> dict: 
+        '''
+        summarize parcel file and return the summary in dict
+        
+        :param parcel_filename: parcel file name (with path)
+        :return: parcel data summary by jurisdiction, subarea, and TAZ
+        :rtype: dict
+        '''
         parcels = Parcels(self.project_settings['subarea_file'], self.project_settings['lookup_file'], parcel_filename, self.project_settings['horizon_year'], self.indent + 1)
         summary_dict = parcels.summarize_parcel_data(self.project_settings['output_dir'], '')
         return summary_dict
@@ -311,13 +307,11 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         out_put_h5_file, _ = QFileDialog.getSaveFileName(self, 'Save Synthetic Population', self.project_settings['output_dir'], "H5 Files (*.h5);;All Files (*)")
         if out_put_h5_file:
             self.status_sections[0].setText("Generating")
-            btns = self.findChildren(QPushButton)
-            for btn in btns:
-                btn.setEnabled(False)
+            self.disableAllButtons()
 
             self.worker = ThreadWrapper(self.wfh_generating, wfh_rate_file_name, out_put_h5_file, h5_file_name)
-            self.worker.finished.connect(lambda: self._on_process_thread_finished(btns, self.status_sections[0], ''))
-            self.worker.error.connect(lambda message: self._on_process_thread_error(btns, self.status_sections[0], message))
+            self.worker.finished.connect(lambda: self._on_process_thread_finished( self.status_sections[0], ''))
+            self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
             self.worker.start()  
         
 

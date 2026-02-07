@@ -538,7 +538,18 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
         self.worker.error.connect(lambda eobj: self._on_interpolation_error(eobj))
         self.worker.start()
 
-    def interpolate_two_parcel_files(self, lower_path, upper_path, lower_year, upper_year, horizon_year):
+    def interpolate_two_parcel_files(self, lower_path, upper_path, lower_year, upper_year, horizon_year) -> Parcels:
+        '''
+        create a parcel data by interpolating two parcels.
+    
+        :param lower_path: parcel file for the left bookend
+        :param upper_path: parcel file for the right bookend
+        :param lower_year: horizon year for the left bookend
+        :param upper_year: horizon year for the right bookend
+        :param horizon_year: horizon for the interpolated parcel
+        :return: interpolated parcel data
+        :rtype: Parcels
+        '''
         import debugpy
         debugpy.breakpoint()
         indent = dialog_level(self)

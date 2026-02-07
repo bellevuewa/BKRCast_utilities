@@ -221,10 +221,14 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
     def synpop_process(self) -> dict:
         import debugpy
         debugpy.breakpoint()
+        self.logger.info(f'creating the control file for PopulationSim')
 
         fn = f'ACS2016_{self.horizon_year}_{self.scenario_name}_popsim_control_file.csv'
         indent = dialog_level(self)
         hhs_assumptions = self.read_synpop_hhsize_occ()
+        self.logger.info(f'assptions for household size and occupancy rates:')
+        import json
+        self.logger.info(f'{json.dumps(hhs_assumptions, indent = 3)}')
         op = SynPopDataOperations(self.base_synpop, self.scenario_name, self.output_dir, hhs_assumptions, indent + 1)
 
         for rule in self.process_rules:

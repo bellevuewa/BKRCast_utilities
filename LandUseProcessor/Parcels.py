@@ -46,6 +46,18 @@ class Parcels:
 
 
     def summarize_parcel_data(self, output_dir, output_fn_prefix = '') -> dict:
+        '''
+        summarize parcel data
+        
+        :param output_dir: output folder
+        :param output_fn_prefix: additional prefix for output file name
+        :return: a dict of summary by jurisdiction, TAZ, and subarea
+            summary_dict = {
+                "Jurisdiction": summary_jurisdictions,
+                "Subarea": summary_subarea,
+                "TAZ": summary_taz
+            }
+        '''
         parcel_df = self.original_parcels_df.merge(self.subarea_df[['BKRCastTAZ', 'Jurisdiction', 'Subarea']], left_on="TAZ_P", right_on = "BKRCastTAZ", how="left")
         summary_jurisdictions = parcel_df.groupby('Jurisdiction')[Summary_Categories].sum().reset_index()
         summary_taz = parcel_df.groupby('TAZ_P')[Summary_Categories].sum().reset_index()
@@ -89,6 +101,12 @@ class Parcels:
         return validation_dict
 
     def sync_with_synthetic_population(self, popsim_filename) -> pd.DataFrame:
+        '''
+        pass the total households by parcel from the synthetic population file to the parcel file
+        
+        :param popsim_filename: synthetic population filename
+        :return: a parcel dataframe with the updated number of households, consistent with the synthetic population.
+        '''
         with h5py.File(popsim_filename, "r") as hdf_file:
             hh_df = h5_to_df(hdf_file, 'Household')
 

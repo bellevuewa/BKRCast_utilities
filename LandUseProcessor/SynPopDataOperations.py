@@ -347,4 +347,4 @@ class SynPopDataOperations:
         cols = ['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'adj_hhs_by_parcel']
 
         self.updated_hhs_by_parcels_df[cols].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(self.output_dir, fn), index = False)
-
+        self.logger.info(f'the parcel allocation guide file is saved to {fn}')

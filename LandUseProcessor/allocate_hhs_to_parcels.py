@@ -276,9 +276,9 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
         pop_df.loc[pp8, 'pptyp'] = 8 
 
         pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
-        print(f'before drop: {pop_df.shape}')
+
         pop_df = pop_df.loc[pop_df['hhno'].isin(final_hhs_df['hhno'])]
-        print(f'after drop: {pop_df.shape}')
+
         output_fn = os.path.join(self.output_dir, output_filename)
         with h5py.File(output_fn, 'w') as output_h5_file:
             df_to_h5(final_hhs_df, output_h5_file, 'Household')

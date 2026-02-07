@@ -84,7 +84,18 @@ class ParcelDataOperations:
        
         return updated_data_df
 
-    def generate_employment_data_for_jurisiction(self, process_rule):
+    def generate_employment_data_for_jurisiction(self, process_rule) -> dict:
+        '''
+        produce parcel data based on the selected processing rules.
+        
+        :param process_rule: rule
+        :return: a dict:{
+            "data_frame": updated_parcels_df.reset_index(),
+            'local_data': local_data_df,
+            'before_change': b4_change_df,
+            "local_data_provider": jurisdiction
+        }
+        '''
         # process_rule: dict 'Jurisdiction', 'File', 'Data_Format', 'Scale_Method'
         self.logger.info(f"processing rule: {process_rule}")
         updated_parcel_dict = {}
@@ -101,8 +112,7 @@ class ParcelDataOperations:
         elif process_rule['Data Format'] == Parcel_Data_Format.BKR_Trip_Model_TAZ_Forma.value:
             if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value:
                 updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], process_rule['File'], 'BKRTMTAZ', 'ControlTotalJobs')
-        
-
+       
         return updated_parcel_dict
 
     def replace_selected_base_data_from_with_local_jurisdiction(self, jurisdiction, set_juris_base_jobs_to_zero, local_parcel_data_file) -> dict:
@@ -169,6 +179,22 @@ class ParcelDataOperations:
         return df_dict 
     
     def scale_selected_base_data_by_total_jobs_by_TAZ(self, jurisdiction, local_TAZ_data_file, taz_attr_name, total_job_attr_name) -> dict:
+        '''
+        scale up the employment data in the base file to match the control total provided by local jurisdiction.
+        
+        :param jurisdiction: local jurisdiction name
+        :param local_TAZ_data_file: data (aggregated to TAZ) provided by jurisdiction
+        :param taz_attr_name: TAZ attribute name
+        :param total_job_attr_name: attribute name for control total (in local_TAZ_data_file)
+        :return: a dict including scaled parcel data
+                df_dict = {
+                    "data_frame": updated_parcel_df.reset_index(),
+                    'local_data': local_jobs_by_TAZ_df,
+                    'before_change': b4_change_df,
+                    "local_data_provider": jurisdiction
+                }       
+        :rtype: dict
+        '''
         updated_parcel_df = self.updated_parcels_df.copy()
 
         local_jobs_by_TAZ_df = pd.read_csv(local_TAZ_data_file, low_memory=False)

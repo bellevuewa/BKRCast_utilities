@@ -1,7 +1,10 @@
 import pandas as pd
 import h5py, logging
 import os, sys
-from utility import *
+import numpy as np
+from utility import (
+    IndentAdapter, h5_to_df, validate_dataframe_file, df_to_h5
+)
 
 sys.path.append(os.getcwd())
 
@@ -36,9 +39,9 @@ class SyntheticPopulation:
         return obj
         
     def load_synpop(self):
-        hdf_file = h5py.File(self.filename, "r")
-        hhs_df = h5_to_df(hdf_file, 'Household')
-        persons_df = h5_to_df(hdf_file, 'Person')
+        with h5py.File(self.filename, "r") as hdf_file: 
+            hhs_df = h5_to_df(hdf_file, 'Household')
+            persons_df = h5_to_df(hdf_file, 'Person')
 
         self.logger.info(f"Syntheic population {self.filename} loaded")
         return hhs_df, persons_df
@@ -60,6 +63,22 @@ class SyntheticPopulation:
         return out
 
     def summarize_synpop(self, output_dir, output_fn_prefix = '', export_parcel_level_summary = False, export_parcel_level_dataset = False) -> dict:        
+        '''
+        summarize synthetic population and return results in a dict
+        
+        :param output_dir: output folder
+        :param output_fn_prefix: additional prefix for the output file names
+        :param export_parcel_level_summary: a boolean
+        :param export_parcel_level_dataset: a boolean
+        :return: a dict
+            {
+            'summary_by_jurisdiction': summary_by_jurisdiction.reset_index(),
+            'summary_by_subarea': summary_by_mma.reset_index(),
+            'summary_by_taz': summary_by_taz.reset_index(),
+            'summary_by_geoid10': summary_by_geoid10.reset_index(),
+            'summary_by_parcel': summary_by_parcels.reset_index()
+            }
+        '''
         workers_df = self.persons_df[['hhno', 'pwtyp', 'psexpfac']].copy()
         workers_df['ft_w'] = 0
         workers_df['pt_w'] = 0

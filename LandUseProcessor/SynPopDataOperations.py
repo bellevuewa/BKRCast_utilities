@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np, math
 from utility import Data_Scale_Method, Job_Categories, Parcel_Data_Format, SynPop_Data_Scale_Method, dialog_level, IndentAdapter
 import logging, os, sys
-from synthetic_population import SyntheticPopulation
+from LandUseUtilities.synthetic_population import SyntheticPopulation
  
 class SynPopDataOperations:
     def __init__(self, synpop: SyntheticPopulation, scen_name, output_dir: str, hhs_assumptions, indent):

@@ -14,13 +14,13 @@ from PyQt6.QtGui import QIntValidator
 from parcel_data_processor import ParcelProcessor
 from land_use_data_preprocessor import LUPreprocessUserInterface
 import land_use_data_processor_utilities as LU_utility
-from GUI_support_utilities import (Shared_GUI_Widgets)
+from GUI_support_utilities import (Shared_GUI_Widgets, ValidationAndSummary)
 from SynPopDataUserInterface import SynPopDataUserInterface
 from allocate_hhs_to_parcels import HouseholdAllocation
-from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
-from synthetic_population import SyntheticPopulation
-from Parcels import Parcels
-from utility import setup_logger_file, dialog_level, _LOGGING_CONFIGURED
+
+from LandUseUtilities.synthetic_population import SyntheticPopulation
+from LandUseUtilities.Parcels import Parcels
+from utility import setup_logger_file, dialog_level, _LOGGING_CONFIGURED, ThreadWrapper
 
 
 class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):

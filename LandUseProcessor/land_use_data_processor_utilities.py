@@ -9,14 +9,13 @@ from PyQt6.QtWidgets import (
     QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox, QSizePolicy, QSplitter,
     QTableWidget, QTableWidgetItem, QMainWindow, QTabWidget, QListWidget, QDialog, QHeaderView
 )
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
-from PyQt6.QtGui import QIntValidator
+from PyQt6.QtCore import Qt
 from enum import Enum
-from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
-from parcel_interpolation import LinearParcelInterpolator
-from Parcels import Parcels
+from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, BaseDataGenerator, ValidationAndSummary)
+
+from LandUseUtilities.Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
-from utility import IndentAdapter, dialog_level, Parcel_Data_Format, Data_Scale_Method
+from utility import IndentAdapter, dialog_level, Parcel_Data_Format, Data_Scale_Method, ThreadWrapper
 
 _LOGGING_CONFIGURED = False
 class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
@@ -46,12 +45,12 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
              "Data_Format": "Processed_Parcel_Data",
              "Scale_Method": "Keep_the_Data_from_the_Partner_City"},
             {"Jurisdiction": "Kirkland", 
-             "File": r"Z:\Modeling Group\BKRCast\LandUse\Kirkland_Complan_Support\2019LU\2019_Kirkland_jobs_by_old_BKRTMTAZ.csv",
-             "Data_Format": "BKR_Trip_Model_TAZ_Forma",
+             "File": r"Z:\Modeling Group\BKRCast\LandUse\test_2044_long_range_planning\input for test\parcel_fixed_Kirkland_Complan_2044_target_Landuse_by_BKRCastTAZ.csv",
+             "Data_Format": "BKRCastTAZ_Format",
              "Scale_Method": "Scale_by_Total_Jobs_by_TAZ"},
             {"Jurisdiction": "Redmond", 
              "File": r"Z:\Modeling Group\BKRCast\LandUse\2044_long_term_planning\2044_Redmond_estimated_jobs_by_BKRTMTAZ.csv",
-             "Data_Format": "BKR_Trip_Model_TAZ_Forma",
+             "Data_Format": "BKR_Trip_Model_TAZ_Format",
              "Scale_Method": "Scale_by_Total_Jobs_by_TAZ"}
             ]
         
@@ -319,9 +318,9 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         
         self.status_sections[0].setText("Done")
 
-    def _on_process_thread_error(self, btns, status_bar_section, e):
+    def _on_process_thread_error(self, status_bar_section, e):
         # called when the thread encounters an error
-        self.enableAllButtons(btns)
+        self.enableAllButtons()
         status_bar_section.setText("Error")
         QMessageBox.critical(self, "Error", str(e))
 
@@ -331,285 +330,3 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         event.accept()
 
    
-class ValidationAndSummary(QDialog, Shared_GUI_Widgets):
-    def __init__(self, parent=None, msg=None, data_dict=None):
-        # data_dict: dictionary containing data to be displayed in the tables
-        super().__init__(parent)
-        self.setWindowTitle("Validation and Summary")
-        self.setMinimumWidth(600)
-        self.data_dict = data_dict
-        self.msg = msg
-        self._init_ui()
-
-        # status bar is created from Shared_GUI_Widgets
-        self.create_status_bar(self, 4)
-
-    def _init_ui(self):
-        """Initialize the user interface."""
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
-
-        info_label = QLabel(self.msg)
-        self.main_layout.addWidget(info_label)
-        self.tab_pages = {}
-
-        self.tabs = QTabWidget()
-        
-        for key, value in self.data_dict.items():
-            self.tab_pages[key] = QTableWidget() 
-            self.tab_pages[key].setSortingEnabled(False)
-            self.tab_pages[key].setRowCount(value.shape[0])
-            self.tab_pages[key].setColumnCount(len(value.columns))
-            self.tab_pages[key].setHorizontalHeaderLabels(value.columns)
-            self.tab_pages[key].setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-            self.tab_pages[key].customContextMenuRequested.connect( 
-                lambda pos, t=self.tab_pages[key]: self.create_context_menu(t, pos)
-            )
-            self.tab_pages[key].selectionModel().selectionChanged.connect(
-                lambda sel, des, t=self.tab_pages[key]: self.on_table_selection_changed(t)
-            )
-
-            # load data into tab. value is a dataframe
-            for row in range(value.shape[0]):
-                for col in range(len(value.columns)):
-                    val = value.iat[row, col]
-                    item = NumericTableWidgetItem(val)
-                    self.tab_pages[key].setItem(row, col, item)
-
-            self.tab_pages[key].setSortingEnabled(True)
-            self.tabs.addTab(self.tab_pages[key], key)
-
-        self.main_layout.addWidget(self.tabs)
-        close_button = QPushButton("Close")
-        close_button.clicked.connect(self.close)
-        self.main_layout.addWidget(close_button)
-
-class ThreadWrapper(QThread):
-    finished = pyqtSignal(object)
-    error = pyqtSignal(object)
-    status_update = pyqtSignal(str, str, str, str) #status bar section 1 ~ 4
-
-    def __init__(self, func, *args, **kwargs):
-        super().__init__()
-        self.func = func
-        self.args = args
-        self.kwargs = kwargs
-        base_logger = logging.getLogger(__name__)
-        self.logger = IndentAdapter(base_logger)
-
-    def run(self):
-        try:
-            ret = None
-            ret = self.func(*self.args, **self.kwargs)
-        except Exception as e:
-            self.error.emit(e)
-            self.logger.error("Exception in thread: ", exc_info=True)
-            return
-         
-        self.finished.emit(ret)
-
-class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
-    def __init__(self, parent = None, message = None):
-        super().__init__(parent)
-        self.__init_ui__(message)
-        self.create_status_bar(self, 4)
-        
-        self.base_file = ""
-        self.lower_boundary_file = ""
-        self.upper_boundary_file = ""
-        self.base_parcel : Parcels = None
-        base_logger = logging.getLogger(__name__)
-        indent = dialog_level(self)
-        self.logger = IndentAdapter(base_logger, indent)
-
-        self.logger.info("Base Parcel Data Generator initialized.")
-
-    def __init_ui__(self, msg):
-        """Initialize the user interface."""
-        self.setWindowTitle("Base Parcel Process")
-        self.main_layout = QVBoxLayout()
-        self.setLayout(self.main_layout)
-
-        info_label = QLabel(msg)
-        self.main_layout.addWidget(info_label)
-        hbox = QHBoxLayout()
-        op1_label = QLabel("Select a Parcel File as the Base")
-        hbox.addWidget(op1_label)
-        select_btn = QPushButton("Select a Base File")
-        select_btn.clicked.connect(lambda: self.select_file("Select a Base Parcel File", op1_label))
-        hbox.addWidget(select_btn)
-        self.main_layout.addLayout(hbox)
-
-        self.base_filename_label = QLabel("No File is Selected")
-        self.main_layout.addWidget(self.base_filename_label)
-
-        groupbox_layout =  QVBoxLayout()
-        groupbox_layout.addWidget(QLabel("Interpolate from Two Parcel Files"))
-        hbox = QHBoxLayout()
-        self.sel1_btn = QPushButton("Select the Parcel File for the Lower Boundary")
-        self.sel1_btn.clicked.connect(lambda: self.select_file_for_interpolation("lower"))
-        self.sel2_btn = QPushButton("Select the Parcel File for the Upper Boundary")
-        self.sel2_btn.clicked.connect(lambda: self.select_file_for_interpolation("upper"))
-        hbox.addWidget(self.sel1_btn)
-        hbox.addWidget(self.sel2_btn)
-        groupbox_layout.addLayout(hbox)
-
-        self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Side", "Year", "File"])
-        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.table.customContextMenuRequested.connect(lambda pos: self.create_context_menu(self.table, pos))
-        groupbox_layout.addWidget(self.table)
-
-        self.interpolate_btn = QPushButton("Interpolate")
-        self.interpolate_btn.clicked.connect(self.interpolation_btn_clicked)
-        groupbox_layout.addWidget(self.interpolate_btn)
-        self.main_layout.addLayout(groupbox_layout)
-
-        hbox = QHBoxLayout()
-        self.valid_btn = QPushButton("Validate")
-        self.valid_btn.clicked.connect(self.validate_btn_clicked)
-        self.valid_btn.setEnabled(False)
-        hbox.addWidget(self.valid_btn)
-
-        self.summarize_btn = QPushButton("Summarize")
-        self.summarize_btn.clicked.connect(self.summarize_btn_clicked) 
-        self.summarize_btn.setEnabled(False)
-        hbox.addWidget(self.summarize_btn)
-        self.main_layout.addLayout(hbox)
-
-    def select_file_for_interpolation(self, side):
-        path, _ = QFileDialog.getOpenFileName(
-                    self, f"Please select a parcel file for {side} boundary", "",
-                    "Data Files (*.csv *.txt *.*)"
-                )
-        rowCount = self.table.rowCount()
-        self.table.insertRow(rowCount)
-        self.table.setItem(rowCount, 0, QTableWidgetItem(side))
-        year_item = QTableWidgetItem(0)
-        self.table.setItem(rowCount, 1, year_item)
-        self.table.setItem(rowCount, 2, QTableWidgetItem(path))
-
-    def select_file(self, message, label = None):
-        path, _ = QFileDialog.getOpenFileName(
-                    self, message, "",
-                    "Data Files (*.csv *.txt *.*)"
-                )
-        if path and label is not None:
-            label.setText(path)
-            self.sel1_btn.setEnabled(False)
-            self.sel2_btn.setEnabled(False)
-            self.interpolate_btn.setEnabled(False)
-            indent = dialog_level(self)
-            self.base_parcel = Parcels(self.parent().project_settings['subarea_file'], self.parent().project_settings['lookup_file'], path, self.parent().horizon_year, indent + 1)
-            self.status_sections[0].setText("Base parcel selected.")
-            self.valid_btn.setEnabled(True)
-            self.summarize_btn.setEnabled(True)
-            self.base_file = path
-
-            self.logger.info(f"Selected base parcel file: {path}")
-        return
-    
-    def interpolation_btn_clicked(self):
-        self.status_sections[0].setText("interpolating")
-        self.disableAllButtons()
-
-        if (self.table.item(0,1).text().strip().isdigit() == False) or (self.table.item(1,1).text().strip().isdigit() == False):
-            QMessageBox.critical(self, "Error", "Check horizon years for interpolation.")
-            return
-        
-        base_year_dict = {}
-        num_row = self.table.rowCount()
-
-        if num_row > 2 or num_row < 2:
-            QMessageBox.critical(self, "Error", "Too many files for interpolation.")
-            return
-        
-        for row in range(num_row):
-            base_year_dict[self.table.item(row, 0).text()] = {"year": int(self.table.item(row, 1).text()), "path": self.table.item(row, 2).text()}
-        
-        lower = int(base_year_dict['lower']['year'])
-        lower_path = base_year_dict['lower']['path']
-        upper = int(base_year_dict['upper']['year'])
-        upper_path = base_year_dict['upper']['path']
-
-        self.worker = ThreadWrapper(self.interpolate_two_parcel_files, lower_path, upper_path, lower, upper, self.parent().horizon_year)
-        self.worker.finished.connect(lambda interpolation_parcel: self._on_interpolation_finished(interpolation_parcel))
-        self.worker.error.connect(lambda eobj: self._on_interpolation_error(eobj))
-        self.worker.start()
-
-    def interpolate_two_parcel_files(self, lower_path, upper_path, lower_year, upper_year, horizon_year) -> Parcels:
-        '''
-        create a parcel data by interpolating two parcels.
-    
-        :param lower_path: parcel file for the left bookend
-        :param upper_path: parcel file for the right bookend
-        :param lower_year: horizon year for the left bookend
-        :param upper_year: horizon year for the right bookend
-        :param horizon_year: horizon for the interpolated parcel
-        :return: interpolated parcel data
-        :rtype: Parcels
-        '''
-        import debugpy
-        debugpy.breakpoint()
-        indent = dialog_level(self)
-        left_parcels = Parcels(self.parent().project_settings['subarea_file'], self.parent().project_settings['lookup_file'], lower_path, lower_year, indent + 1)
-        right_parcels = Parcels(self.parent().project_settings['subarea_file'], self.parent().project_settings['lookup_file'], upper_path, upper_year, indent + 1)
-
-        interpolation = LinearParcelInterpolator(self.parent().output_dir, indent)
-
-        self.logger.info(f"Interpolating parcel data between {lower_year} and {upper_year} for horizon year {horizon_year}")
-        self.logger.info(f"Lower boundary file: {lower_path}")
-        self.logger.info(f"Upper boundary file: {upper_path}")
-
-        # Parcels DataFrame after interpolation
-        interpolated_parcels = interpolation.interpolate(left_parcels, right_parcels, horizon_year)
-        return interpolated_parcels
-
-    def _on_interpolation_finished(self, parcels : Parcels):
-        self.base_parcel = parcels
-        self.enableAllButtons()
-        self.status_sections[0].setText('Done')
-        self.base_filename_label.setText(self.base_parcel.filename)
-        self.base_file = self.base_parcel.filename
-
-    def _on_interpolation_error(self, exception_obj):
-        # called when the thread encounters an error
-        self.enableAllButtons()
-        self.status_sections[0].setText("interpolation failed")
-        QMessageBox.critical(self, "Error", str(exception_obj))
-                             
-    def validate_btn_clicked(self):
-        self.status_sections[0].setText("running")
-        self.disableAllButtons()
-
-        self.worker = ThreadWrapper(self.base_parcel.validate_parcel_file)
-        self.worker.finished.connect(lambda validate_dict: self._on_validation_finished(validate_dict))
-        self.worker.error.connect(lambda message: self._on_validation_error(self.status_sections[0], message))
-        self.worker.start()
-        
-    def _on_validation_finished(self, validate_dict):
-        # called when the thread is finished
-        self.enableAllButtons()
-        
-        self.status_sections[0].setText("Done")
-        # Add validation logic here
-        valid_dialog = ValidationAndSummary(self, "Validation and Summary of the base parcel data", validate_dict)
-        valid_dialog.exec()
-        self.status_sections[0].setText("")
-
-    def _on_validation_error(self, status_bar_section, message):
-        # called when the thread encounters an error
-        self.enableAllButtons()
-        status_bar_section.setText("Error")
-        QMessageBox.critical(self, "Error", message)
-
-    def summarize_btn_clicked(self):
-        summary_dict = self.base_parcel.summarize_parcel_data(self.parent().output_dir, 'base')
-        summary_dialog = ValidationAndSummary(self, "Base Parcel File Summary", summary_dict)
-        summary_dialog.exec()    
-
-    def closeEvent(self, event):
-        self.logger.info("Base Parcel Data Generator is closed.")
-        self.accept()
-        event.accept()   

@@ -5,6 +5,8 @@ import pandas as pd
 from enum import Enum
 import logging
 from datetime import datetime
+from PyQt6.QtCore import Qt, QThread, pyqtSignal
+
 
 #2/3/2022
 # upgrade to python 3.7
@@ -238,3 +240,27 @@ def validate_dataframe_file(dataframe: pd.DataFrame) -> dict:
     }
 
     return validation_dict
+
+class ThreadWrapper(QThread):
+    finished = pyqtSignal(object)
+    error = pyqtSignal(object)
+    status_update = pyqtSignal(str, str, str, str) #status bar section 1 ~ 4
+
+    def __init__(self, func, *args, **kwargs):
+        super().__init__()
+        self.func = func
+        self.args = args
+        self.kwargs = kwargs
+        base_logger = logging.getLogger(__name__)
+        self.logger = IndentAdapter(base_logger)
+
+    def run(self):
+        try:
+            ret = None
+            ret = self.func(*self.args, **self.kwargs)
+        except Exception as e:
+            self.error.emit(e)
+            self.logger.error("Exception in thread: ", exc_info=True)
+            return
+         
+        self.finished.emit(ret)

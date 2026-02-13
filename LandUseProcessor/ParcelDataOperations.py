@@ -2,7 +2,7 @@ import pandas as pd
 import numpy as np
 from utility import Data_Scale_Method, Job_Categories, Parcel_Data_Format, dialog_level, IndentAdapter
 import logging, os, sys
-from Parcels import Parcels
+from LandUseUtilities.Parcels import Parcels
  
 
 class ParcelDataOperations:
@@ -109,7 +109,7 @@ class ParcelDataOperations:
                 updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], True, process_rule['File'])
             else:
                 raise Exception(f'invalid scale method {process_rule["Scale Method"]}')
-        elif process_rule['Data Format'] == Parcel_Data_Format.BKR_Trip_Model_TAZ_Forma.value:
+        elif process_rule['Data Format'] == Parcel_Data_Format.BKR_Trip_Model_TAZ_Format.value:
             if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value:
                 updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], process_rule['File'], 'BKRTMTAZ', 'ControlTotalJobs')
        

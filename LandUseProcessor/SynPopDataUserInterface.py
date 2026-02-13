@@ -10,14 +10,14 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QDoubleValidator
 from PyQt6.QtCore import Qt
 from enum import Enum
-from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
-from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
-from synpop_interpolation import LinearSynPopInterpolator
-from Parcels import Parcels
+from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, ThreadWrapper, ValidationAndSummary)
+
+from LandUseUtilities.synpop_interpolation import LinearSynPopInterpolator
+from LandUseUtilities.Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
 from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
-                     Summary_Categories, )
-from synthetic_population import SyntheticPopulation
+                     Summary_Categories)
+from LandUseUtilities.synthetic_population import SyntheticPopulation
 from SynPopDataOperations import SynPopDataOperations
 
 
@@ -86,7 +86,7 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
         popsim_button = QPushButton("Select PopSim control file template")
         popsim_button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         self.popsim_label = QLabel("No template selected")
-        popsim_button.clicked.connect(self.browse_output_file)
+        popsim_button.clicked.connect(self.popsim_template_btn_clicked)
         hbox.addWidget(popsim_button)
         hbox.addWidget(self.popsim_label)
         self.main_layout.addLayout(hbox)    
@@ -192,7 +192,7 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
             self.base_file_label.setText(base_dialog.base_file)
         
 
-    def browse_output_file(self):
+    def popsim_template_btn_clicked(self):
         path, _ = QFileDialog.getOpenFileName(
                     self, 'Select PopSim control template file', "",
                     "csv (*.csv);;All Files(*.*)"
@@ -207,6 +207,10 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
         rows = self.rule_table.rowCount()
         if rows == 0:
             QMessageBox.critical(self, "Error", "At least one rule is required.")
+            return
+        
+        if (self.popsim_control_template_file == ''):
+            QMessageBox.critical(self, "Error", "Select the template control file for popsim.")
             return
         
         self.status_sections[0].setText("Processing")
@@ -435,6 +439,10 @@ class BaseSynPopDataGenerator(QDialog, Shared_GUI_Widgets):
         indent = dialog_level(self)
         left_synpop = SyntheticPopulation(self.parent().project_settings['subarea_file'], self.parent().project_settings['lookup_file'], lower_path, lower_year, indent + 1)
         right_synpop = SyntheticPopulation(self.parent().project_settings['subarea_file'], self.parent().project_settings['lookup_file'], upper_path, upper_year, indent + 1)
+
+        if self.blockgroup_file == '':
+            QMessageBox.critical(self, "Error", 'Select the block group file first')
+            return
 
         interpolation = LinearSynPopInterpolator(self.parent().output_dir, self.blockgroup_file, indent)
 

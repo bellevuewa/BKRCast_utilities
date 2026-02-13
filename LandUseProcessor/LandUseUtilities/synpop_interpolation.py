@@ -1,10 +1,10 @@
 from abc import ABC, abstractmethod
 import logging, copy, os
 import pandas as pd
-from Parcels import Parcels
+from LandUseUtilities.Parcels import Parcels
 from utility import Job_Categories, IndentAdapter, backupScripts, dialog_level, h5_to_df, df_to_h5
 import h5py
-from synthetic_population import SyntheticPopulation
+from LandUseUtilities.synthetic_population import SyntheticPopulation
 
 class synpop_interpolation:
     def __init__(self, block_group_file : str, indent):

@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 import logging, copy, os
 import pandas as pd
-from Parcels import Parcels
+from LandUseUtilities.Parcels import Parcels
 from utility import Job_Categories, IndentAdapter, backupScripts, dialog_level
 
 class ParcelInterpolator(ABC):

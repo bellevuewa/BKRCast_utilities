@@ -7,11 +7,9 @@ import h5py
 from pathlib import Path
 from PyQt6.QtWidgets import (
       QLabel, QPushButton, QFileDialog, QVBoxLayout, QHBoxLayout, QSizePolicy, QDialog)
-from GUI_support_utilities import (Shared_GUI_Widgets)
-from utility import IndentAdapter, dialog_level, df_to_h5
-from synthetic_population import SyntheticPopulation
-from land_use_data_processor_utilities import ThreadWrapper, ValidationAndSummary
-
+from GUI_support_utilities import (Shared_GUI_Widgets, ValidationAndSummary)
+from utility import IndentAdapter, dialog_level, df_to_h5, ThreadWrapper
+from LandUseUtilities.synthetic_population import SyntheticPopulation
 class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
     def __init__(self, project_setting, parent = None):
         super().__init__(parent)

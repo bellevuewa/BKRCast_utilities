@@ -112,7 +112,10 @@ class ParcelDataOperations:
         elif process_rule['Data Format'] == Parcel_Data_Format.BKR_Trip_Model_TAZ_Format.value:
             if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value:
                 updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], process_rule['File'], 'BKRTMTAZ', 'ControlTotalJobs')
-       
+        elif process_rule['Data Format'] == Parcel_Data_Format.BKRCastTAZ_Format.value:
+            if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value:
+                updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], process_rule['File'], 'BKRCastTAZ', 'ControlTotalJobs')
+     
         return updated_parcel_dict
 
     def replace_selected_base_data_from_with_local_jurisdiction(self, jurisdiction, set_juris_base_jobs_to_zero, local_parcel_data_file) -> dict:

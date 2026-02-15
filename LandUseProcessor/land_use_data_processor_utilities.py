@@ -15,7 +15,7 @@ from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, B
 
 from LandUseUtilities.Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
-from utility import IndentAdapter, dialog_level, Parcel_Data_Format, Data_Scale_Method, ThreadWrapper
+from utility import (IndentAdapter, dialog_level, Parcel_Data_Format, Data_Scale_Method, ThreadWrapper)
 
 _LOGGING_CONFIGURED = False
 class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
@@ -99,6 +99,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
             "Data Format",
             [item.name for item in Parcel_Data_Format]
         )
+        self.method_list_box.itemClicked.connect(self.on_format_clicked)
         splitter.addWidget(format_container)
 
         # Scale By
@@ -150,19 +151,34 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         hbox.addWidget(self.summarize_btn)
         self.main_layout.addLayout(hbox)
 
+    def on_format_clicked(self, item):
+        if item is None:
+            return
+        
+        if item.text() == Parcel_Data_Format.Processed_Parcel_Data.value:
+            self.scaleby_list_box.clear()
+            self.scaleby_list_box.addItem(Data_Scale_Method.Keep_the_Data_from_the_Partner_City.value)
+        elif item.text() == Parcel_Data_Format.BKRCastTAZ_Format.value:
+            self.scaleby_list_box.clear()
+            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Job_Category.value)           
+            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value)  
+        elif item.text() ==   Parcel_Data_Format.BKR_Trip_Model_TAZ_Format.value:
+            self.scaleby_list_box.clear()
+            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value)              
+
     def sync_btn_clicked(self):
         if self.final_parcel == None:
             # load file and create Parcel Object
             parcel_name, _ = QFileDialog.getOpenFileName(self, "Select the Parcel File for Syncing", "", "txt Files (*.txt);;All Files (*)")
             if parcel_name == '':
-                QMessageBox.criticla(self, "Error", "Please select the parcel file.")
+                QMessageBox.critical(self, "Error", "Please select the parcel file.")
                 return
             
             self.final_parcel = Parcels(self.project_settings['subarea_file'], self.project_settings['lookup_file'], parcel_name, self.horizon_year, self.indent + 1)
         # otherwise use final_parcel
         popsim_name, _ = QFileDialog.getOpenFileName(self, "Select Synthetic Population File", "", "H5 Files (*.h5);;All Files (*)")
         if popsim_name == '':
-            QMessageBox.criticla(self, "Error", "Please select the synthetic population file.")
+            QMessageBox.critical(self, "Error", "Please select the synthetic population file.")
             return          
         
         self.status_sections[0].setText("synchronizing")

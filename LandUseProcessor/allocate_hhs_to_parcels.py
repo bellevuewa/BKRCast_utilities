@@ -47,7 +47,7 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
         self.main_layout.addLayout(hbox) 
 
         vbox = QVBoxLayout()    
-        popsim_btn = QPushButton("Select Base Population Data Files")
+        popsim_btn = QPushButton("Select Population Data Files")
         popsim_btn.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
         vbox.addWidget(popsim_btn)
         hbox = QHBoxLayout()

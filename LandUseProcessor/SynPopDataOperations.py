@@ -256,8 +256,8 @@ class SynPopDataOperations:
         total_hhs_before_rounding = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].sum()
 
         for record in controlled_taz_hhs:
-            adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].round(0)
-            subtotal = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'].sum()
+            adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'].round(0).astype(int)
+            subtotal = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ'], 'adj_hhs_by_parcel'].sum().round(0).astype(int)
             diff = subtotal - record['adj_hhs_by_parcel']
             mf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] >= 2)
             sf_parcel_flags = (adjusted_hhs_by_parcel_df['BKRCastTAZ'] == record['BKRCastTAZ']) & (adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] == 1)
@@ -331,6 +331,7 @@ class SynPopDataOperations:
        
         # must set index first before using update
         self.updated_hhs_by_parcels_df.set_index('PSRC_ID', inplace = True)
+        self.updated_hhs_by_parcels_df[['adj_hhs_by_parcel','adj_persons_by_parcel']] = self.updated_hhs_by_parcels_df[['adj_hhs_by_parcel','adj_persons_by_parcel']].fillna(0).astype(int)
         self.updated_hhs_by_parcels_df.update(adjusted_hhs_by_parcel_df.set_index('PSRC_ID')[['adj_hhs_by_parcel','adj_persons_by_parcel']])
     
         self.updated_hhs_by_parcels_df.reset_index(inplace = True)       

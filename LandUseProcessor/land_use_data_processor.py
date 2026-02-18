@@ -199,7 +199,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
 
     def parcel_btn_clicked(self):
         self.load_settings()
-        parcel_processor = ParcelProcessor()
+        parcel_processor = ParcelProcessor(self.project_settings)
         parcel_processor.exec()
 
     def popsim_button_clicked(self):

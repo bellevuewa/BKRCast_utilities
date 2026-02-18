@@ -34,13 +34,16 @@ import pandas as pd
 import logging
 from datetime import datetime
 from PyQt6.QtWidgets import (
-    QApplication, QMainWindow, QWidget, QLabel, QPushButton,
+    QDialog, QWidget, QLabel, QPushButton,
     QFileDialog, QVBoxLayout, QHBoxLayout, QLineEdit, QMessageBox,
-    QTableWidget, QTableWidgetItem, QMainWindow, QMenu, QTabWidget
+    QTableWidget, QTableWidgetItem, QTabWidget
 )
 
+sys.path.append(os.getcwd())
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
+from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
+                     Summary_Categories, ThreadWrapper)
 
 from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
 # -------------------------
@@ -59,57 +62,22 @@ FILTER_RULES = {
     "Outside BKR": lambda df: df[(df["Jurisdiction"] == "Rest of KC") | (df["Jurisdiction"] == "External")]
 }
 
-# -------------------------
-# Logging setup
-# -------------------------
-
-LOG_FILE = "parcel_processor.log"
-
-
-class ProcessorWorker(QThread):
-    """Worker thread to run the assemble operation without freezing the GUI."""
-    finished = pyqtSignal()
-    error = pyqtSignal(str)
-    status_update = pyqtSignal(str, str, str, str)  # status, records, sources, output
-    
-    def __init__(self, assembler):
-        super().__init__()
-        self.assembler = assembler
-    
-    def run(self):
-        try:
-            self.assembler._assemble_worker()
-        except Exception as e:
-            self.error.emit(str(e))
-        finally:
-            self.finished.emit()
-
-class NumbericTableWidgetItem(QTableWidgetItem):
-    """Custom QTableWidgetItem that treats numbers correctly for sorting."""
-    def __init__(self, text):
-        text = "" if text is None else str(text)
-        super().__init__(text)
-        try:
-            self.numeric_value = float(text)
-            self.is_numeric = True
-        except ValueError:
-            self.numeric_value = text
-            self.is_numeric = False
-
-    def __lt__(self, other):
-        if isinstance(other, NumbericTableWidgetItem):
-            if self.is_numeric and other.is_numeric:
-                return self.numeric_value < other.numeric_value
-            
-            if self.is_numeric != other.is_numeric:
-                return self.is_numeric
-        return super().__lt__(other)
-        
-class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
-    def __init__(self):
-        super().__init__()
+class ParcelProcessor(QDialog, Shared_GUI_Widgets):
+    def __init__(self, project_settings, parent=None):
+        super().__init__(parent)
         self.setWindowTitle("Parcel Data Processor")
         self.setMinimumWidth(750)
+        self.project_settings = project_settings
+
+        base_logger = logging.getLogger(__name__)
+        indent = dialog_level(self)
+        self.logger = IndentAdapter(base_logger, indent)
+        self.logger.info("Popsim Data UI initialized.")
+
+        self.output_dir = self.project_settings['output_dir']
+        self.horizon_year = self.project_settings['horizon_year']
+        self.scenario_name = self.project_settings['scenario_name']
+
         self.file_inputs = {
             "Bellevue": "",
             "Bellevue Fringe": "",
@@ -130,9 +98,9 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
         self._init_ui()
         self.create_status_bar(self, 4)
 
-
     def _init_ui(self):
         self.main_layout = QVBoxLayout()
+        self.setLayout(self.main_layout)
 
         title = QLabel("Parcel Data Processor")
         title.setStyleSheet("font-size: 18px; font-weight: bold; height: 40px; padding: 5px;")
@@ -158,32 +126,6 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
                 entry.setText(self.file_inputs[name])
             self.file_inputs[name] = entry
 
-        # subarea file input
-        label = QLabel("Subarea Definition File")
-        label.setMinimumWidth(160)
-        sub_row = QHBoxLayout()
-
-        self.subarea_input = QLineEdit()
-        self.subarea_input.setPlaceholderText("Select CSV/Excel containing Subarea mapping...")
-        sub_browse = QPushButton("Browse")
-        sub_browse.clicked.connect(lambda: self.browse_file("Subarea File", self.subarea_input))
-        sub_row.addWidget(label)
-        sub_row.addWidget(self.subarea_input)
-        sub_row.addWidget(sub_browse)
-        self.main_layout.addLayout(sub_row)
-
-        # output folder input
-        label = QLabel("Output File")
-        label.setMinimumWidth(160)
-        output_row = QHBoxLayout()
-        self.output_input = QLineEdit()
-        self.output_input.setPlaceholderText("Select location to save assembled parcel file...")
-        output_browse = QPushButton("Browse")
-        output_browse.clicked.connect(self.browse_output_file)
-        output_row.addWidget(label)
-        output_row.addWidget(self.output_input)
-        output_row.addWidget(output_browse)
-        self.main_layout.addLayout(output_row)
 
         # assemble button
         assemble_btn = QPushButton("Process Parcel File")
@@ -262,9 +204,6 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
         self.main_layout.addWidget(QLabel("Aggregated Summary"))
         self.main_layout.addWidget(self.tabs)
 
-        central = QWidget()
-        central.setLayout(self.main_layout)
-        self.setCentralWidget(central)
 
     def browse_file(self, name, entry):
         path, _ = QFileDialog.getOpenFileName(
@@ -286,34 +225,26 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
         self.disableAllButtons()
         self.status_sections[0].setText("Running")
         
-        self.worker = ProcessorWorker(self)
+        self.worker = ThreadWrapper(self._assemble_worker)
         self.worker.finished.connect(self._on_assembly_finished)
         self.worker.error.connect(self._on_assembly_error)
         self.worker.start()
 
     def _assemble_worker(self):
         """Main assembly logic - runs in background thread."""
-        logging.basicConfig(
-            filename=os.path.join(self.output_input.text().strip(), "parcel_processor.log"),
-            level=logging.INFO,
-            format="%(asctime)s | %(message)s",
-        )
-
-        logging.info("Parcel data process started")
+        self.logger.info("Parcel data process started")
         
         # Log all file inputs
-        logging.info("=" * 60)
-        logging.info("ALL FILE INPUTS:")
+        self.logger.info("=" * 60)
+        self.logger.info("ALL FILE INPUTS:")
         for name, entry in self.file_inputs.items():
             path = entry.text().strip()
-            logging.info(f"  {name}: {path if path else '(not selected)'}")
-        logging.info(f"  Subarea File: {self.subarea_input.text().strip() if self.subarea_input.text().strip() else '(not selected)'}")
-        logging.info("=" * 60)
-        
+            self.logger.info(f"  {name}: {path if path else '(not selected)'}")
+         
         dfs = []
         summary_rows = []
 
-        subarea_df = pd.read_csv(self.subarea_input.text())
+        subarea_df = self.project_settings['subarea_df']
         # subarea_df = pd.read_csv(r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv")
         
         for name, entry in self.file_inputs.items():
@@ -325,7 +256,7 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
             df = df.merge(subarea_df[["BKRCastTAZ", "Jurisdiction", "Subarea", "SubareaName"]], left_on="TAZ_P", right_on = "BKRCastTAZ", how="left")
             filtered = FILTER_RULES[name](df)
             # filtered["SOURCE"] = name
-            logging.info(f"{name}: {len(filtered)} records selected")
+            self.logger.info(f"{name}: {len(filtered)} records selected")
             dfs.append(filtered)
             summary_rows.append((name, os.path.basename(path), len(filtered)))
 
@@ -334,15 +265,15 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
 
         result = pd.concat(dfs, ignore_index=True)
 
-        self.summarize_parcel_data(result, subarea_df=subarea_df, output_dir=self.output_input.text().strip())
+        self.summarize_parcel_data(result, subarea_df=subarea_df, output_dir=self.output_dir.strip())
 
         result = result.drop(columns=["BKRCastTAZ", "Jurisdiction", "Subarea", "SubareaName"], errors='ignore')
         result = result.sort_values(by="PARCELID", ascending=True)
-        output_filename = os.path.join(self.output_input.text().strip(), "assembled_parcel_urbansim.txt")
-        # output_filename = r"Z:\Modeling Group\BKRCast\LandUse\test_2044_long_range_planning\parcel_urbansim.txt"
+        output_filename = os.path.join(self.output_dir, f"{self.horizon_year}_{self.scenario_name}_assembled_parcel_urbansim.txt")
+
         if output_filename:
             result.to_csv(output_filename, index=False, sep =" ")
-            logging.info(f"Assembled file saved to: {output_filename}")
+            self.logger.info(f"Assembled file saved to: {output_filename}")
             
             # Update UI from worker thread safely
             self.status_sections[0].setText("Done")
@@ -386,7 +317,7 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
         for row in range(len(df)):
             for col in range(len(df.columns)):
                 val = df.iat[row, col]
-                item = NumbericTableWidgetItem(str(val))
+                item = NumericTableWidgetItem(str(val))
                 table.setItem(row, col, item)
         table.setSortingEnabled(True)
 
@@ -410,12 +341,12 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
 
             self.valid_table.setItem(row, 0, QTableWidgetItem(col))
             self.valid_table.setItem(row, 1, QTableWidgetItem(dtype))
-            self.valid_table.setItem(row, 2, NumbericTableWidgetItem(str(unique_vals)))
-            self.valid_table.setItem(row, 3, NumbericTableWidgetItem(str(missing_vals)))
-            self.valid_table.setItem(row, 4, NumbericTableWidgetItem(str(duplicate_vals)))
-            self.valid_table.setItem(row, 5, NumbericTableWidgetItem(str(min_val)))
-            self.valid_table.setItem(row, 6, NumbericTableWidgetItem(str(max_val)))
-            self.valid_table.setItem(row, 7, NumbericTableWidgetItem(str(mean_val)))
+            self.valid_table.setItem(row, 2, NumericTableWidgetItem(str(unique_vals)))
+            self.valid_table.setItem(row, 3, NumericTableWidgetItem(str(missing_vals)))
+            self.valid_table.setItem(row, 4, NumericTableWidgetItem(str(duplicate_vals)))
+            self.valid_table.setItem(row, 5, NumericTableWidgetItem(str(min_val)))
+            self.valid_table.setItem(row, 6, NumericTableWidgetItem(str(max_val)))
+            self.valid_table.setItem(row, 7, NumericTableWidgetItem(str(mean_val)))
 
         self.valid_table.setSortingEnabled(True)
 
@@ -432,23 +363,17 @@ class ParcelProcessor(QMainWindow, Shared_GUI_Widgets):
         for row in range(min(100, df.shape[0])):
             for col in range(len(df.columns)):
                 val = df.iat[row, col]
-                item = NumbericTableWidgetItem(str(val))
+                item = NumericTableWidgetItem(str(val))
                 self.raw_table.setItem(row, col, item)
 
     def _on_assembly_finished(self):
         """Called when assembly thread finishes."""
         self.enableAllButtons()
 
-    def _on_assembly_error(self, error_msg):
+    def _on_assembly_error(self, error_obj):
         """Called when assembly thread encounters an error."""
-        logging.error(f"Assemble process failed: {error_msg}", exc_info=True)
+        self.logger.error(f"Assemble process failed: {error_obj}", exc_info=True)
         self.status_sections[0].setText("Error")
-        self.status_sections[1].setText(error_msg)
+        self.status_sections[1].setText(str(error_obj))
         self.enableAllButtons()
-        QMessageBox.critical(self, "Error", error_msg)
-
-if __name__ == "__main__":
-    app = QApplication(sys.argv)
-    window = ParcelProcessor()
-    window.show()
-    sys.exit(app.exec())
+        QMessageBox.critical(self, "Error", str(error_obj))

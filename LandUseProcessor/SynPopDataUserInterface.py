@@ -10,13 +10,13 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QDoubleValidator
 from PyQt6.QtCore import Qt
 from enum import Enum
-from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, ThreadWrapper, ValidationAndSummary)
+from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, ValidationAndSummary)
 
 from LandUseUtilities.synpop_interpolation import LinearSynPopInterpolator
 from LandUseUtilities.Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
 from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
-                     Summary_Categories)
+                     Summary_Categories, ThreadWrapper)
 from LandUseUtilities.synthetic_population import SyntheticPopulation
 from SynPopDataOperations import SynPopDataOperations
 

@@ -156,6 +156,7 @@ class Shared_GUI_Widgets:
 
         return data
 
+
 class NumericTableWidgetItem(QTableWidgetItem):
     """Custom QTableWidgetItem that treats numbers correctly for sorting."""
     def __init__(self, text):

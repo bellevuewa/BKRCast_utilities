@@ -1,9 +1,9 @@
 from PyQt6.QtWidgets import (
-    QApplication, QMessageBox, QMenu, QStatusBar, QLabel, QTableWidget, QTableWidgetItem,
-    QSizePolicy, QWidget, QVBoxLayout, QListWidget, QPushButton, QDialog, QTabWidget, QHBoxLayout, QFileDialog, 
+    QApplication, QMessageBox, QMenu, QStatusBar, QLabel, QTableWidget, QTableWidgetItem, QComboBox, QListWidgetItem, 
+    QSizePolicy, QWidget, QVBoxLayout, QListWidget, QPushButton, QDialog, QTabWidget, QHBoxLayout, QFileDialog, QDialogButtonBox
     )
 
-from PyQt6.QtGui import QAction 
+from PyQt6.QtGui import QAction, QBrush, QColor
 from PyQt6.QtCore import Qt
 import pandas as pd
 import logging
@@ -437,3 +437,81 @@ class BaseDataGenerator(QDialog, Shared_GUI_Widgets):
         self.logger.info("Base Parcel Data Generator is closed.")
         self.accept()
         event.accept()   
+
+class FileConfigDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        file_path, _ = QFileDialog.getOpenFileName(self, "Open File", "", "Data Files (*.csv *.txt *.*)")
+        if not file_path:
+            return
+        self.setWindowTitle(f"Configure {file_path}")
+        self.file_path = file_path
+        self.selected_keys = []
+        self.selected_sep = ','
+
+        layout = QVBoxLayout()
+
+        # separator selection
+        layout.addWidget(QLabel("Select Separator:"))
+        self.sep_combo = QComboBox()
+        self.sep_combo.addItems([",", ";", "Space", "\\t (Tab)"])
+        layout.addWidget(self.sep_combo)
+
+        # Load columns button
+        self.load_cols_btn = QPushButton("Load Columns")
+        layout.addWidget(self.load_cols_btn)
+
+        # Primary key input with checkboxes
+        layout.addWidget(QLabel("Enter Primary Key(s):"))
+        self.key_list = QListWidget()
+        layout.addWidget(self.key_list)
+
+        self.buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
+        layout.addWidget(self.buttons)
+
+        self.setLayout(layout)
+
+        # Signals
+        self.load_cols_btn.clicked.connect(self.load_columns)
+        self.buttons.accepted.connect(self.accept)
+        self.buttons.rejected.connect(self.reject)
+        self.key_list.itemChanged.connect(self.update_highlight)
+
+    def load_columns(self):
+        sep_text = self.sep_combo.currentText()
+        if sep_text.startswith("\\t"):
+            sep = "\t"
+        elif sep_text == "Space":
+            sep = " " 
+        else:
+            sep = sep_text
+            
+        try:
+            df = pd.read_csv(self.file_path, sep=sep, nrows=1000)
+        except Exception as e:
+            self.key_list.clear()
+            self.key_list.addItem(f"Error reading file: {e}")
+            return
+        self.key_list.clear()
+        for col in df.columns:
+            item = QListWidgetItem(col)
+            item.setFlags(item.flags() | Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            self.key_list.addItem(item)
+
+    def update_highlight(self, item):
+        ''' Highlight selected items '''
+        for i in range(self.key_list.count()):
+            item = self.key_list.item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                item.setBackground(QBrush(QColor("lightblue")))
+            else:
+                item.setBackground(QBrush(Qt.GlobalColor.white))
+
+    def get_config(self):
+        sep_text = self.sep_combo.currentText()
+        self.selected_sep = "\t" if sep_text.startswith("\\t") else " " if sep_text == "Space" else sep_text
+        self.selected_keys = [self.key_list.item(i).text()
+                              for i in range(self.key_list.count())
+                              if self.key_list.item(i).checkState() == Qt.CheckState.Checked]
+        return {"path": self.file_path, "sep": self.selected_sep, "keys": self.selected_keys}

@@ -80,16 +80,20 @@ def backupScripts(source, dest):
     import shutil
     shutil.copyfile(source, dest)
 
-def setup_logger_file(output_dir, log_name = "parcel_processing.log") -> logging.Logger:
+def setup_logger_file(output_dir, log_mode = 'w', log_name = "land_use_data_processing.log") -> logging.Logger:
     global _LOGGING_CONFIGURED 
     if _LOGGING_CONFIGURED:
         base_logger = logging.getLogger(__name__)
         logger = IndentAdapter(base_logger, indent = 0)
+        logger.info('')
+        logger.info('------------------------------------------------------------')
         return logger
 
     log_filename = os.path.join(output_dir, log_name)
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-    file_handler = logging.FileHandler(log_filename, mode = 'w')
+    log_file_exists = os.path.isfile(log_filename)
+
+    file_handler = logging.FileHandler(log_filename, mode = log_mode)
 
     file_handler.setLevel(logging.DEBUG)
     file_handler.setFormatter(formatter)
@@ -110,9 +114,13 @@ def setup_logger_file(output_dir, log_name = "parcel_processing.log") -> logging
 
     base_logger = logging.getLogger(__name__)
     logger = IndentAdapter(base_logger)   
-    logger.info(
-        "Logging initialized at %s", log_filename
-    )  
+    if log_file_exists:
+        logger.info('')
+        logger.info('------------------------------------------------------------')
+    else:
+        logger.info(
+            "Logging initialized at %s", log_filename
+        )  
     return logger
 
 class IndentAdapter(logging.LoggerAdapter):

@@ -45,7 +45,7 @@ from PyQt6.QtGui import QAction
 from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
                      Summary_Categories, ThreadWrapper)
 
-from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem)
+from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, FileConfigDialog)
 # -------------------------
 # Configuration section
 # -------------------------
@@ -95,6 +95,30 @@ class ParcelProcessor(QDialog, Shared_GUI_Widgets):
             # "Redmond Fringe": r"Z:\Modeling Group\BKRCast\LandUse\Complan\Complan2044\2044LU\parcels_urbansim.txt",
             # "Outside BKR": r"Z:\Modeling Group\BKRCast\LandUse\Complan\Complan2044\2044LU\parcels_urbansim.txt"
         }
+
+        self.file_inputs = {
+            "Bellevue": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },
+            "Bellevue Fringe": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },
+            "Kirkland": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },            
+            "Kirkland Fringe": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },
+            "Redmond": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },
+            "Redmond Fringe": {
+                'path': '', 'sep': ' ', 'keys': ''
+            },
+            "Outside BKR": {
+                'path': '', 'sep': ' ', 'keys': ''
+            }
+        }
         self._init_ui()
         self.create_status_bar(self, 4)
 
@@ -123,8 +147,8 @@ class ParcelProcessor(QDialog, Shared_GUI_Widgets):
             self.main_layout.addLayout(row)
             # Set pre-populated value if it exists, then store the widget
             if self.file_inputs[name] is not None:
-                entry.setText(self.file_inputs[name])
-            self.file_inputs[name] = entry
+                entry.setText(self.file_inputs[name]['path'].strip())
+            # self.file_inputs[name] = entry
 
 
         # assemble button
@@ -205,13 +229,18 @@ class ParcelProcessor(QDialog, Shared_GUI_Widgets):
         self.main_layout.addWidget(self.tabs)
 
 
-    def browse_file(self, name, entry):
-        path, _ = QFileDialog.getOpenFileName(
-            self, f"Select {name} parcel file", "",
-            "Data Files (*.csv *.txt *.*)"
-        )
-        if path:
-            entry.setText(path)
+    def browse_file(self, name, entry) -> dict: 
+        '''
+        Open file dialog and return selected file path. If user cancels, return None.
+        returns: {"path": file_path, "sep": column_separator, "keys": primary_keys}
+        '''
+        dialog = FileConfigDialog(self)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            config = dialog.get_config()
+            entry.setText(config["path"])
+            self.file_inputs[name]['path'] = config["path"]  # Store the file path in the main dictionary
+            self.file_inputs[name]['sep'] = config["sep"]
+            self.file_inputs[name]['keys'] = config["keys"]
 
     def browse_output_file(self):
         path = QFileDialog.getExistingDirectory(
@@ -238,7 +267,7 @@ class ParcelProcessor(QDialog, Shared_GUI_Widgets):
         self.logger.info("=" * 60)
         self.logger.info("ALL FILE INPUTS:")
         for name, entry in self.file_inputs.items():
-            path = entry.text().strip()
+            path = entry['path'].strip()
             self.logger.info(f"  {name}: {path if path else '(not selected)'}")
          
         dfs = []
@@ -248,11 +277,11 @@ class ParcelProcessor(QDialog, Shared_GUI_Widgets):
         # subarea_df = pd.read_csv(r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv")
         
         for name, entry in self.file_inputs.items():
-            path = entry.text().strip()
+            path = entry['path'].strip()
             if not path:
                 continue
 
-            df = pd.read_csv(path, low_memory=False, sep = " ")
+            df = pd.read_csv(path, low_memory=False, sep = entry['sep'])
             df = df.merge(subarea_df[["BKRCastTAZ", "Jurisdiction", "Subarea", "SubareaName"]], left_on="TAZ_P", right_on = "BKRCastTAZ", how="left")
             filtered = FILTER_RULES[name](df)
             # filtered["SOURCE"] = name

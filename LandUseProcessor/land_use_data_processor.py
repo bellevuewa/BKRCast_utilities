@@ -20,6 +20,7 @@ from allocate_hhs_to_parcels import HouseholdAllocation
 
 from LandUseUtilities.synthetic_population import SyntheticPopulation
 from LandUseUtilities.Parcels import Parcels
+from ParcelDataOperations import ParcelDataOperations
 from utility import setup_logger_file, dialog_level, _LOGGING_CONFIGURED, ThreadWrapper
 
 
@@ -122,6 +123,10 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         new_parcels_button.clicked.connect(self.new_parcels_btn_clicked)
         self.main_layout.addWidget(new_parcels_button)
 
+        update_parking_cost_button = QPushButton("Update Parking Cost in Parcel File")
+        update_parking_cost_button.clicked.connect(self.update_parking_cost_btn_clicked)
+        self.main_layout.addWidget(update_parking_cost_button)
+
         self.disableAllButtons()
         output_button.setEnabled(True)
 
@@ -190,7 +195,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
             self.output_label.setText(path)
             self.project_settings["output_dir"] = path
             horizon_year = int(self.year_box.text()) if self.year_box.text().isdigit() else -1
-            self.logger = setup_logger_file(path, f'{horizon_year}_{self.scen_input_editbox.text().strip()}_land_use_data_processor_{datetime.now().strftime("%Y%m%d_%H%M%S")}.log')
+            self.logger = setup_logger_file(path, log_mode = 'a', log_name = f'{horizon_year}_{self.scen_input_editbox.text().strip()}_land_use_data_processor.log')
             self.logger.info(f"Output folder set to: {path}")
             self.status_sections[0].setText("log initialized.")
             self.enableAllButtons()
@@ -322,6 +327,41 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         synpop = SyntheticPopulation(self.project_settings['subarea_file'], self.project_settings['lookup_file'],
                                      input_popsim_file, self.project_settings['horizon_year'], self.indent + 1)   
         synpop.adjust_worker_status_for_WFH(wfh_rate_file_name, output_h5_file)
+
+    def update_parking_cost_btn_clicked(self):
+        parcel_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Parcel File to Update", "", "txt File (*.txt);;All Files (*)")
+        if parcel_file_name == '':
+            QMessageBox.critical(self, "Error", "Select the Parcel File to Update.")
+            return    
+        
+        parking_ensemble_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Parking Ensemble File", "", "txt File (*.txt);;All Files (*)")
+        if parking_ensemble_file_name == '':
+            QMessageBox.critical(self, "Error", "Select the Parking Ensemble File.")
+            return          
+
+        parking_cost_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Parking Cost Update File", "", "csv File (*.csv);;All Files (*)")
+        if parking_cost_file_name == '':
+            QMessageBox.critical(self, "Error", "Select the Parking Cost Update File.")
+            return           
+
+        out_put_parcel_file, _ = QFileDialog.getSaveFileName(self, 'Save Updated Parcel File', self.project_settings['output_dir'], "txt Files (*.txt);;All Files (*)")
+        if out_put_parcel_file:
+            self.status_sections[0].setText("Updating Parking Cost in Parcel File")
+            self.disableAllButtons()
+
+            dir = os.path.dirname(out_put_parcel_file)
+            fn = os.path.basename(out_put_parcel_file)
+            parcels = Parcels(self.project_settings['subarea_file'], self.project_settings['lookup_file'], parcel_file_name, self.project_settings['horizon_year'], self.indent + 1)
+            op = ParcelDataOperations(parcels, dir, fn, self.indent + 1)
+            self.logger.info(f"parcel file: {parcel_file_name}")
+            self.logger.info(f'horizon year: {self.project_settings["horizon_year"]}')
+            self.logger.info(f'Update parking cost')
+            self.worker = ThreadWrapper(op.update_parking_cost, parking_ensemble_file_name, parking_cost_file_name, self.project_settings['horizon_year'])
+            self.worker.finished.connect(lambda: self._on_process_thread_finished( self.status_sections[0], ''))
+            self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
+            self.worker.start()
+
+
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

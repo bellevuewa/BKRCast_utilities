@@ -266,3 +266,97 @@ class ParcelDataOperations:
         print('jobs gained ' + str(new_jobs - total_jobs_b4_scaling))        
         
         return df_dict 
+    
+    def update_parking_cost(self, gz_file, parking_cost_file, horizon_year):       
+        # -----------------------------
+        # 1. Read ga.txt
+        # -----------------------------
+        self.logger.info(f"Parking ensemble data: {gz_file}")
+        self.logger.info(f"Parking cost data: {parking_cost_file}")
+        gz_df = pd.read_csv(gz_file, skiprows=5, header=None)
+
+        gz_df = gz_df[[1, 2]].copy()
+        gz_df.columns = ["ensemble", "BKRCastTAZ"]
+
+        gz_df["ensemble"] = gz_df["ensemble"].astype(str).str.replace(":", "", regex=False).str.strip().str.lower().str[:4]   # enforce fixed 4-char format
+    
+        gz_df["BKRCastTAZ"] = pd.to_numeric(gz_df["BKRCastTAZ"], errors="coerce")
+        gz_df = gz_df.dropna()
+        gz_df["BKRCastTAZ"] = gz_df["BKRCastTAZ"].astype(int)
+
+        # -----------------------------
+        # 2. Read parking_costs.csv
+        # -----------------------------
+        parking_cost_df = pd.read_csv(parking_cost_file)
+        parking_cost_df.rename(columns= {'ENS': 'ensemble'}, inplace=True)
+
+        parking_cost_df["ensemble"] = parking_cost_df["ensemble"].astype(str).str.strip().str.lower()
+        
+        # normalize to gzXX format
+        parking_cost_df["ensemble"] = parking_cost_df["ensemble"].str.replace(
+            r"gz(\d+)",
+            lambda x: f"gz{int(x.group(1)):02d}",
+            regex=True
+        )
+
+        # -----------------------------
+        # 3. Horizon year logic
+        # -----------------------------
+        available_years = parking_cost_df["year"].unique()
+        valid_years = [y for y in available_years if y <= horizon_year]
+        self.logger.info(f"Available years in parking cost data: {available_years}")
+       
+
+        if not valid_years:
+            raise ValueError("No valid year <= horizon year found")
+
+        selected_year = max(valid_years)
+        self.logger.info(f"Parking cost data for the year {selected_year} is used.")
+        parking_cost_df = parking_cost_df.loc[parking_cost_df["year"] == selected_year]
+
+        # -----------------------------
+        # 4. Merge GA with parking cost
+        # -----------------------------
+        taz_cost_df = gz_df.merge(parking_cost_df, on="ensemble", how="left")
+
+        # self.updated_parcels_df = updated_parcels_df.copy()
+        # optio[nal validation
+        missing = taz_cost_df.loc[taz_cost_df["HR_COST"].isna()]
+        if not missing.empty:
+            print("Warning: Missing hourly parking cost for ensembles:")
+            print(missing["ensemble"].unique())
+
+        missing = taz_cost_df.loc[taz_cost_df["DAY_COST"].isna()]
+        if not missing.empty:
+            print("Warning: Missing daily parking cost for ensembles:")
+            print(missing["ensemble"].unique())
+
+        # -----------------------------
+        # 6. Attach costs to parcels
+        # -----------------------------
+        updated_parcels_df = self.updated_parcels_df.copy()
+        updated_parcels_df = updated_parcels_df.merge(
+            taz_cost_df[["BKRCastTAZ", "HR_COST", "DAY_COST"]],
+            left_on="TAZ_P",
+            right_on="BKRCastTAZ",
+            how="left"
+        )
+
+        # -----------------------------
+        # 7. Replace parking cost fields
+        # -----------------------------
+        updated_parcels_df["PPRICHRP"] = updated_parcels_df["HR_COST"]
+        updated_parcels_df["PPRICDYP"] = updated_parcels_df["DAY_COST"]
+        updated_parcels_df.fillna({ "PPRICHRP": 0, "PPRICDYP": 0 }, inplace=True)
+
+        # cleanup
+        updated_parcels_df = updated_parcels_df.drop(
+            columns=["BKRCastTAZ", "HR_COST", "DAY_COST"],
+            errors="ignore"
+        )
+
+        self.updated_parcels_df = updated_parcels_df.copy()
+        self.updated_parcels_df.to_csv(os.path.join(self.output_dir,  self.output_filename), sep = ' ', index=False)
+        self.logger.info(f"Parcel data with updated parking cost is saved to {self.output_filename}")
+
+        return self.updated_parcels_df

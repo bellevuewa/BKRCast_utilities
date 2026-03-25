@@ -329,6 +329,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         synpop.adjust_worker_status_for_WFH(wfh_rate_file_name, output_h5_file)
 
     def update_parking_cost_btn_clicked(self):
+        self.load_settings()
         parcel_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Parcel File to Update", "", "txt File (*.txt);;All Files (*)")
         if parcel_file_name == '':
             QMessageBox.critical(self, "Error", "Select the Parcel File to Update.")

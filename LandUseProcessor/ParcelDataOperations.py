@@ -115,7 +115,11 @@ class ParcelDataOperations:
         elif process_rule['Data Format'] == Parcel_Data_Format.BKRCastTAZ_Format.value:
             if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value:
                 updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_TAZ(process_rule['Jurisdiction'], process_rule['File'], 'BKRCastTAZ', 'ControlTotalJobs')
-     
+        elif process_rule['Data Format'] == Parcel_Data_Format.Subarea_Format.value:
+            if process_rule['Scale Method'] == Data_Scale_Method.Scale_by_Total_Jobs_by_Subarea.value:
+                updated_parcel_dict = self.scale_selected_base_data_by_total_jobs_by_Subarea(process_rule['Jurisdiction'], process_rule['File'], 'Subarea', 'ControlTotalJobs')
+
+
         return updated_parcel_dict
 
     def replace_selected_base_data_from_with_local_jurisdiction(self, jurisdiction, set_juris_base_jobs_to_zero, local_parcel_data_file) -> dict:
@@ -267,6 +271,97 @@ class ParcelDataOperations:
         
         return df_dict 
     
+
+    def scale_selected_base_data_by_total_jobs_by_Subarea(self, jurisdiction, local_subarea_data_file, subareaID, total_job_attr_name) -> dict:
+        '''
+        scale up the employment data in the base file to match the control total provided by local jurisdiction.
+        
+        :param jurisdiction: local jurisdiction name
+        :param local_TAZ_data_file: data (aggregated to TAZ) provided by jurisdiction
+        :param taz_attr_name: TAZ attribute name
+        :param total_job_attr_name: attribute name for control total (in local_TAZ_data_file)
+        :return: a dict including scaled parcel data
+                df_dict = {
+                    "data_frame": updated_parcel_df.reset_index(),
+                    'local_data': local_jobs_by_TAZ_df,
+                    'before_change': b4_change_df,
+                    "local_data_provider": jurisdiction
+                }       
+        :rtype: dict
+        '''
+        updated_parcel_df = self.updated_parcels_df.copy()
+        taz_attr_name = 'BKRCastTAZ'
+
+        local_jobs_by_Subarea_df = pd.read_csv(local_subarea_data_file, low_memory=False)
+        total_job_control = local_jobs_by_Subarea_df[total_job_attr_name].sum()
+        target_taz_df = self.subarea_df.loc[self.subarea_df['Subarea'].isin(local_jobs_by_Subarea_df[subareaID])]
+        target_parcels_df = self.lookup_df.merge(target_taz_df[['Subarea', taz_attr_name]], on = taz_attr_name, how = 'right')
+        target_parcels_df = updated_parcel_df.merge(target_parcels_df[['PSRC_ID', taz_attr_name, 'Subarea']], left_on = 'PARCELID', right_on = 'PSRC_ID')
+    
+        b4_change_df = target_parcels_df.copy()
+        job_cat = Job_Categories.copy()
+        job_cat.append('EMPTOT_P')
+        job_cat.append(subareaID)
+
+        total_jobs_b4_scaling = target_parcels_df['EMPTOT_P'].sum()
+        self.logger.info(f'total jobs provided by {jurisdiction}: {total_job_control}')
+        self.logger.info(f'total jobs in {jurisdiction} before scaling: {total_jobs_b4_scaling}')
+        jobs_by_Subarea_b4_scaling_df = target_parcels_df[job_cat].groupby('Subarea').sum()
+        local_jobs_by_Subarea_df = local_jobs_by_Subarea_df.merge(jobs_by_Subarea_b4_scaling_df.reset_index(), on = 'Subarea', how = 'left')
+        local_jobs_by_Subarea_df.loc[local_jobs_by_Subarea_df['EMPTOT_P'] != 0, 'scale'] = local_jobs_by_Subarea_df[total_job_attr_name] / local_jobs_by_Subarea_df['EMPTOT_P']
+        local_jobs_by_Subarea_df.loc[local_jobs_by_Subarea_df['EMPTOT_P'] == 0, 'scale'] = 1
+
+        target_parcels_df = target_parcels_df.merge(local_jobs_by_Subarea_df[['Subarea', 'scale']], on = 'Subarea', how = 'left')
+        target_parcels_df['EMPTOT_P'] = 0
+ 
+        # scaling
+        for col in Job_Categories:
+            target_parcels_df[col] = target_parcels_df[col] * target_parcels_df['scale']
+            target_parcels_df[col] = target_parcels_df[col].round(0).astype(int)
+        self.logger.info(f'total scaled jobs in {jurisdiction} before controlled rounding: {target_parcels_df[Job_Categories].sum(axis=1).sum()}')
+        
+        # apply controlled rounding
+        total_scaled = target_parcels_df[Job_Categories].sum(axis = 1).sum()
+        diff = total_job_control - total_scaled
+        for col in Job_Categories:
+            assigned_by_job_cat = target_parcels_df[col].sum()
+            job_cat_ctrl = int(round((assigned_by_job_cat / total_job_control) * diff + assigned_by_job_cat, 0))
+            target_parcels_df = self.controlled_rounding(target_parcels_df, col, job_cat_ctrl, 'PARCELID')
+
+        target_parcels_df['EMPTOT_P'] = target_parcels_df[Job_Categories].sum(axis=1)
+        self.logger.info(f'total scaled jobs in {jurisdiction} after controlled rounding: {target_parcels_df["EMPTOT_P"].sum()}')
+
+        target_parcels_df.to_csv(os.path.join(self.output_dir, f'{jurisdiction}_scaled_jobs_by_parcel.csv'), index = False)
+        scaled_jobs_by_Subarea_df = target_parcels_df[job_cat].groupby('Subarea').sum()
+        scaled_jobs_by_Subarea_df = scaled_jobs_by_Subarea_df.merge(local_jobs_by_Subarea_df[['Subarea', total_job_attr_name]], on = 'Subarea')
+        scaled_jobs_by_Subarea_df.to_csv(os.path.join(self.output_dir, f'{jurisdiction}_job_comparison_by_Subarea.csv'), index = True)
+
+        updated_parcel_df = updated_parcel_df.loc[~updated_parcel_df['PARCELID'].isin(target_parcels_df['PARCELID'])].copy()
+        target_parcels_df.drop(columns = ['PSRC_ID', taz_attr_name, 'scale'], inplace = True)
+        updated_parcel_df = pd.concat([updated_parcel_df, target_parcels_df], ignore_index=True)
+        updated_parcel_df = updated_parcel_df.sort_values(by = ['PARCELID'], ascending = True)
+
+        # calculate total jobs after change
+        updated_parcel_df.fillna(0, inplace=True)
+        updated_parcel_df['EMPTOT_P'] = updated_parcel_df[Job_Categories].sum(axis=1)
+        new_jobs = updated_parcel_df.loc[updated_parcel_df['PARCELID'].isin(target_parcels_df['PARCELID']), 'EMPTOT_P'].sum()
+        updated_parcel_df.drop(columns = ['Subarea'], inplace = True)
+        df_dict = {
+            "data_frame": updated_parcel_df.reset_index(),
+            'local_data': local_jobs_by_Subarea_df,
+            'before_change': b4_change_df,
+            "local_data_provider": jurisdiction
+        }
+
+        self.updated_parcels_df = updated_parcel_df.copy() 
+        # restore index
+        print('jobs before change: ' + str(total_jobs_b4_scaling))
+        print('              after change: ' + str(new_jobs))
+        print('jobs gained ' + str(new_jobs - total_jobs_b4_scaling))        
+        
+        return df_dict 
+    
+
     def update_parking_cost(self, gz_file, parking_cost_file, horizon_year):       
         # -----------------------------
         # 1. Read ga.txt

@@ -158,10 +158,13 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         if item.text() == Parcel_Data_Format.Processed_Parcel_Data.value:
             self.scaleby_list_box.clear()
             self.scaleby_list_box.addItem(Data_Scale_Method.Keep_the_Data_from_the_Partner_City.value)
+        elif item.text() == Parcel_Data_Format.Subarea_Format.value:
+            self.scaleby_list_box.clear()
+            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_Subarea.value)
         elif item.text() == Parcel_Data_Format.BKRCastTAZ_Format.value:
             self.scaleby_list_box.clear()
             self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Job_Category.value)           
-            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value)  
+            self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value) 
         elif item.text() ==   Parcel_Data_Format.BKR_Trip_Model_TAZ_Format.value:
             self.scaleby_list_box.clear()
             self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value)              

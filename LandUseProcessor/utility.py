@@ -34,10 +34,12 @@ class Parcel_Data_Format(Enum):
     Processed_Parcel_Data = "Processed_Parcel_Data"
     BKRCastTAZ_Format = "BKRCastTAZ_Format"
     BKR_Trip_Model_TAZ_Format = "BKR_Trip_Model_TAZ_Format"
+    Subarea_Format = "Subarea_Format"
 class Data_Scale_Method(Enum):
     Keep_the_Data_from_the_Partner_City = "Keep_the_Data_from_the_Partner_City"
     Scale_by_Job_Category = "Scale_by_Job_Category"
     Scale_by_Total_Jobs_by_TAZ = "Scale_by_Total_Jobs_by_TAZ"
+    Scale_by_Total_Jobs_by_Subarea = 'Scale_by_Total_Jobs_by_Subarea'
 class SynPop_Data_Scale_Method(Enum):
     Keep_the_Data_from_the_Partner_City = "Keep_the_Data_from_the_Partner_City"
     Scale_by_Total_Hhs_by_TAZ = "Scale_by_Total_Hhs_by_TAZ"

@@ -1,0 +1,5 @@
+{
+    "Bellevue":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
+    "Kirkland":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
+    "Redmond":   {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895}
+}

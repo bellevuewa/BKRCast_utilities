@@ -1,3 +1,4 @@
+import json
 import sys, os
 sys.path.append(os.getcwd())
 import logging
@@ -15,7 +16,7 @@ from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, V
 from LandUseUtilities.synpop_interpolation import LinearSynPopInterpolator
 from LandUseUtilities.Parcels import Parcels
 from ParcelDataOperations import ParcelDataOperations
-from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
+from utility import (IndentAdapter, dialog_level,  Parcel_Data_Format, Data_Scale_Method,
                      Summary_Categories, ThreadWrapper)
 from LandUseUtilities.synthetic_population import SyntheticPopulation
 from SynPopDataOperations import SynPopDataOperations
@@ -31,6 +32,12 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
 
         self.base_synpop : SyntheticPopulation = None
         self.final_synpop  : SyntheticPopulation = None
+
+        # read default values from synpop_assumption.json and load to the table
+        from pathlib import Path
+        script_dir = Path(__file__).parent
+        with open(script_dir / 'synthetic_pop_assumption.json', 'r') as f:
+            self.SynPopAssumptions = json.load(f)
 
         self.__init_ui__()
         self.create_status_bar(self, 4)
@@ -107,7 +114,7 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
                 box = QLineEdit()
                 box.setValidator(QDoubleValidator(0.0,5.0, 3))
                 self.table.setCellWidget(row, col, box)
-                self.table.cellWidget(row, col).setText(str(SynPopAssumptions[city][field]))
+                self.table.cellWidget(row, col).setText(str(self.SynPopAssumptions[city][field]))
         self.table.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
         vbox.addWidget(self.table)
         self.main_layout.addLayout(vbox)
@@ -174,7 +181,7 @@ class SynPopDataUserInterface(QDialog, Shared_GUI_Widgets):
 
     def read_synpop_hhsize_occ(self)->dict:
         import copy
-        ret_dict = copy.deepcopy(SynPopAssumptions)
+        ret_dict = copy.deepcopy(self.SynPopAssumptions)
         cities = ['Bellevue', 'Kirkland', 'Redmond']
         fields = ['sfhhsize', 'mfhhsize', 'sfhh_occ', 'mfhh_occ']      
 

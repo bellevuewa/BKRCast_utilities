@@ -42,7 +42,7 @@ from PyQt6.QtWidgets import (
 sys.path.append(os.getcwd())
 from PyQt6.QtCore import Qt, QThread, pyqtSignal
 from PyQt6.QtGui import QAction
-from utility import (IndentAdapter, dialog_level, SynPopAssumptions, Parcel_Data_Format, Data_Scale_Method,
+from utility import (IndentAdapter, dialog_level, Parcel_Data_Format, Data_Scale_Method,
                      Summary_Categories, ThreadWrapper)
 
 from GUI_support_utilities import (Shared_GUI_Widgets, NumericTableWidgetItem, FileConfigDialog)

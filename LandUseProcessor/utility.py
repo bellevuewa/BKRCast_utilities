@@ -13,12 +13,6 @@ from PyQt6.QtCore import Qt, QThread, pyqtSignal
 
 _LOGGING_CONFIGURED = False
 
-SynPopAssumptions = {
-    "Bellevue":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
-    "Kirkland":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
-    "Redmond":   {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
-}
-
 Job_Categories = ['EMPEDU_P', 'EMPFOO_P', 'EMPGOV_P', 'EMPIND_P', 'EMPMED_P', 'EMPOFC_P', 'EMPOTH_P', 'EMPRET_P', 'EMPRSC_P', 'EMPSVC_P']
 Summary_Categories = ['EMPEDU_P', 'EMPFOO_P', 'EMPGOV_P', 'EMPIND_P', 'EMPMED_P', 'EMPOFC_P', 'EMPOTH_P', 'EMPRET_P', 'EMPSVC_P', 'EMPTOT_P', 'STUGRD_P', 'STUHGH_P', 'STUUNI_P', 'HH_P']
 

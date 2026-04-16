@@ -1,5 +1,10 @@
 {
-    "Bellevue":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
-    "Kirkland":  {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895},
-    "Redmond":   {"sfhhsize": 2.82, "mfhhsize": 2.03, "sfhh_occ": 0.952, "mfhh_occ": 0.895}
+    "metadata": {
+        "description": "This file contains the default assumptions for synthetic population generation, including household size and occupancy rates for single-family and multi-family households in different jurisdictions.",
+        "version": "1.0",
+        "last_updated": "2026-04-15"
+    },
+    "Bellevue":  {"sfhhsize": 2.82, "mfhhsize": 2.08, "sfhh_occ": 0.952, "mfhh_occ": 0.92},
+    "Kirkland":  {"sfhhsize": 2.82, "mfhhsize": 2.08, "sfhh_occ": 0.952, "mfhh_occ": 0.92},
+    "Redmond":   {"sfhhsize": 2.82, "mfhhsize": 2.08, "sfhh_occ": 0.952, "mfhh_occ": 0.92}
 }

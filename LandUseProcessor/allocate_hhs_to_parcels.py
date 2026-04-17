@@ -83,6 +83,7 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
         hbox = QHBoxLayout()
         self.valid_btn = QPushButton("Validate")
         self.valid_btn.clicked.connect(self.validate_button_clicked)
+        self.valid_btn.setEnabled(False)
         hbox.addWidget(self.valid_btn)
 
         self.summarize_btn = QPushButton("Summarize")
@@ -131,7 +132,7 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
         self.status_sections[0].setText("Allocating households...")
         self.disableAllButtons()
 
-        output_filename = f'{self.horizon_year}_{self.scenario_name}_hhs_and_persons.h5'
+        output_filename = f'{self.horizon_year}_{self.scenario_name}_hh_and_persons.h5'
         self.worker = ThreadWrapper(self.allocate_households, output_filename)
         self.worker.finished.connect(lambda ret: self._on_process_thread_finished(self.status_sections[0], ret))
         self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))

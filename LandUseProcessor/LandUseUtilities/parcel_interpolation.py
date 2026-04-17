@@ -84,7 +84,7 @@ class LinearParcelInterpolator(ParcelInterpolator):
         self.logger.info(f"After interpolation, total jobs are {parcel_horizon_df['EMPTOT_P'].sum():,.0f}")
         self.interpolated_df = parcel_horizon_df
 
-        interpolated_fn = f'Interpolated_{horizon_year}_urbansim_parcels_from_{left_Parcels.data_year}_and {right_Parcels.data_year}_to_{horizon_year}.txt'
+        interpolated_fn = f'Interpolated_{horizon_year}_parcels_urbansim_from_{left_Parcels.data_year}_and {right_Parcels.data_year}_to_{horizon_year}.txt'
         self.export_interpolated_parcels(interpolated_fn)
         
         out = Parcels.from_dataframe(self.interpolated_df, horizon_year, interpolated_fn, left_Parcels.subarea_df, left_Parcels.lookup_df, self.indent + 1)

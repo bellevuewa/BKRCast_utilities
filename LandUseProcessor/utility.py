@@ -63,7 +63,12 @@ def df_to_h5(df, h5_store, group_name):
     for col in df.columns:
         data = df[col].to_numpy()
         if np.issubdtype(data.dtype, np.integer):
-            dtype = 'int32' if data.dtype.itemsize <= 4 else 'int64'
+            if col == 'block_group_id':
+                # int64 cannot be read into daysim appropriately through hdf5dotnet interface,because the read function will read it as int32 which will
+                # generate a memory access error. But it is fine to keep it in int64 in h5.
+                dtype = 'int64'
+            else:
+                dtype = 'int32' # must use int32 in h5 to ensure it can be read into daysim appropriately through hdf5dotnet interface, because the read function will read it as int32 which will generate a memory access error if it is int64. But it is fine to keep it in int64 in h5.
         elif np.issubdtype(data.dtype, np.floating):
             dtype = 'float32'
         else:

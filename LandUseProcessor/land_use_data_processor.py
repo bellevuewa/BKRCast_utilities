@@ -67,6 +67,7 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         # add scenario input box
         self.scen_input_editbox = QLineEdit()
         self.scen_input_editbox.setPlaceholderText("Scenario Name")
+        self.scen_input_editbox.textChanged.connect(self.replace_spaces)
         hbox.addWidget(self.scen_input_editbox)
         self.main_layout.addLayout(hbox) 
 
@@ -127,8 +128,25 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
         update_parking_cost_button.clicked.connect(self.update_parking_cost_btn_clicked)
         self.main_layout.addWidget(update_parking_cost_button)
 
+        hbox = QHBoxLayout()
+        self.validate_parcel_button = QPushButton("Validate a Parcel File")
+        self.validate_parcel_button.clicked.connect(self.validate_parcel_button_clicked)
+        hbox.addWidget(self.validate_parcel_button)
+        self.validate_popsim_button = QPushButton("Validate Synthetic Population")
+        self.validate_popsim_button.clicked.connect(self.validate_popsim_button_clicked)
+        hbox.addWidget(self.validate_popsim_button)
+        self.main_layout.addLayout(hbox)
+
         self.disableAllButtons()
         output_button.setEnabled(True)
+
+    def replace_spaces(self, text):
+        # replace space with underscore in the scenario name input box, and keep the cursor position unchanged
+        new_text = text.replace(" ", "_")
+        if new_text != text:
+            cursor_pos = self.scen_input_editbox.cursorPosition()
+            self.scen_input_editbox.setText(new_text)
+            self.scen_input_editbox.setCursorPosition(cursor_pos)
 
     def load_settings(self):
         """Load settings from the UI."""
@@ -362,6 +380,51 @@ class LandUseDataUserInterface(QMainWindow, Shared_GUI_Widgets):
             self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
             self.worker.start()
 
+    def validate_parcel_button_clicked(self):
+        self.load_settings()
+        parcel_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Parcel File to Validate", "", "txt File (*.txt);;All Files (*)")
+        if parcel_file_name == '':
+            QMessageBox.critical(self, "Error", "Select the Parcel File to Validate.")
+            return    
+
+        parcels = Parcels(self.project_settings['subarea_file'], self.project_settings['lookup_file'], parcel_file_name, self.project_settings['horizon_year'], self.indent + 1)
+        
+        self.worker = ThreadWrapper(parcels.validate_parcel_file)
+        self.worker.finished.connect(lambda validate_dict: self._on_valid_parcel_thread_finished(validate_dict))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
+        self.worker.start()
+
+    def _on_valid_parcel_thread_finished(self, validate_dict):
+        self.enableAllButtons()
+        self.status_sections[0].setText("Done")
+        validation_dialog = ValidationAndSummary(self, "Validation and Summary of the processed parcel data", validate_dict)
+        validation_dialog.exec()
+        self.status_sections[0].setText("")
+
+    def validate_popsim_button_clicked(self):
+        self.load_settings()
+        h5_file_name, _ = QFileDialog.getOpenFileName(self, "Select the Synthetic Population File to Validate", "", "h5 File (*.h5);;All Files (*)")
+        if h5_file_name == '':
+            QMessageBox.critical(self, "Error", "Select the Synthetic Population File to Validate.")
+            return    
+        
+        synpop = SyntheticPopulation(self.project_settings['subarea_file'], self.project_settings['lookup_file'],
+                                     h5_file_name, self.project_settings['horizon_year'], self.indent + 1)   
+        
+        self.worker = ThreadWrapper(synpop.validate_hhs_persons)
+        self.worker.finished.connect(lambda validate_dict: self._on_valid_synpop_thread_finished(validate_dict))
+        self.worker.error.connect(lambda message: self._on_process_thread_error(self.status_sections[0], message))
+        self.worker.start()
+
+    def _on_valid_synpop_thread_finished(self, validate_dict):
+        # called when the thread is finished
+        self.enableAllButtons()
+        
+        self.status_sections[0].setText("Done")
+        # Add validation logic here
+        valid_dialog = ValidationAndSummary(self, "Synthetic Population Validation Result", validate_dict)
+        valid_dialog.exec()
+        self.status_sections[0].setText("")
 
 
 if __name__ == "__main__":

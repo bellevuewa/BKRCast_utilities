@@ -15,13 +15,13 @@ from LandUseUtilities.parcel_interpolation import LinearParcelInterpolator
 
 class Shared_GUI_Widgets:
     def enableAllButtons(self, btns: list = None):
-        if btns == None:
+        if btns is None:
             btns = self.findChildren(QPushButton)
         for btn in btns:
             btn.setEnabled(True)
 
     def disableAllButtons(self, btns: list = None):
-        if btns == None:
+        if btns is None:
             btns = self.findChildren(QPushButton)
         for btn in btns:
             btn.setEnabled(False)

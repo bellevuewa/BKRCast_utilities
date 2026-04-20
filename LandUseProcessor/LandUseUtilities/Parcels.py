@@ -128,4 +128,6 @@ class Parcels:
         self.logger.info(f'Synthetic population file {popsim_filename} synced with the parcel file {self.filename}')
         self.logger.info(f'The final parcel file is saved in {output_parcel_file}.')
 
+        self.original_parcels_df = parcel_df # update the original_parcels_df with the synced one, so that later steps can use the synced parcel data.
+
         return parcel_df

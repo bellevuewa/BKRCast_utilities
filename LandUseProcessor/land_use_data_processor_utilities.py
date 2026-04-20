@@ -26,7 +26,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         self.setMinimumWidth(750)
 
         self.project_settings = project_settings
-        self.base_file = r"Z:\Modeling Group\BKRCast\LandUse\Complan\Complan2044\2044LU\DT_rebalance_btw_job_category\parcels_urbansim.txt"
+        self.base_file = r""
         self.landuse_rules = []
         self.base_parcel : Parcels = None
         self.final_parcel  : Parcels = None
@@ -170,7 +170,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
             self.scaleby_list_box.addItem(Data_Scale_Method.Scale_by_Total_Jobs_by_TAZ.value)              
 
     def sync_btn_clicked(self):
-        if self.final_parcel == None:
+        if self.final_parcel is None:
             # load file and create Parcel Object
             parcel_name, _ = QFileDialog.getOpenFileName(self, "Select the Parcel File for Syncing", "", "txt Files (*.txt);;All Files (*)")
             if parcel_name == '':
@@ -231,6 +231,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         if base_dialog.exec() == QDialog.DialogCode.Accepted:
             self.base_parcel = base_dialog.base_parcel
             self.base_file_label.setText(base_dialog.base_file)
+            self.base_file = base_dialog.base_file
 
     def select_files(self, msg, label):
         filename, _ = QFileDialog.getOpenFileName(self, msg, "", "Text Files (*.txt);;All Files (*)")
@@ -251,7 +252,6 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         
     def _on_sync_thread_finished(self, btns=None):
         self.enableAllButtons(btns)
-        
         self.status_sections[0].setText("Done")   
 
     def _on_valid_thread_finished(self, btns, validate_dict):

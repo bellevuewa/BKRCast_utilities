@@ -158,16 +158,17 @@ class ParcelDataOperations:
             updated_parcels_df.loc[updated_parcels_df['PARCELID'].isin(missing_juris_parcels_df['PARCELID']), Job_Categories] = 0
         # index by parcel id for alignment
         updated_parcels_df = updated_parcels_df.set_index('PARCELID')
-        local_data_df = local_data_df.set_index('PSRC_ID')
+        actual_juris_parcels_df = actual_juris_parcels_df.set_index('PSRC_ID')
+        # local_data_df = local_data_df.set_index('PSRC_ID')
 
         # only update rows that exist in both
-        common_ids = updated_parcels_df.index.intersection(local_data_df.index)
+        common_ids = updated_parcels_df.index.intersection(actual_juris_parcels_df.index)
         b4_change_df = updated_parcels_df.loc[common_ids, jobs_cat]
         self.logger.info(f"{len(common_ids)} parcels are found in both the base file and the parcel file provided by {jurisdiction}")
         self.logger.info(f"total jobs among these parcels before replacement: {b4_change_df['EMPTOT_P'].sum()} ")
 
         # replace values
-        updated_parcels_df.loc[common_ids, jobs_cat] = local_data_df.loc[common_ids, jobs_cat]
+        updated_parcels_df.loc[common_ids, jobs_cat] = actual_juris_parcels_df.loc[common_ids, jobs_cat]
         self.logger.info(f"total jobs among these parcels after replacement: {updated_parcels_df.loc[common_ids, 'EMPTOT_P'].sum()}")
         
         # calculate total jobs after change
@@ -176,7 +177,7 @@ class ParcelDataOperations:
 
         df_dict = {
             "data_frame": updated_parcels_df.reset_index(),
-            'local_data': local_data_df,
+            'local_data': actual_juris_parcels_df,
             'before_change': b4_change_df,
             "local_data_provider": jurisdiction
         }

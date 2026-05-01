@@ -321,7 +321,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         import debugpy
         debugpy.breakpoint()
 
-        fn = f'{self.horizon_year}_{self.scenario_name}_updated_urbansim_parcels.txt'
+        fn = f'{self.horizon_year}_{self.scenario_name}_updated_parcels_urbansim.txt'
         indent = dialog_level(self)
         op = ParcelDataOperations(self.base_parcel, self.output_dir, fn, indent + 1)
         for rule in self.process_rules:

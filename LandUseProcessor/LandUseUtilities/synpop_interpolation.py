@@ -122,7 +122,7 @@ class LinearSynPopInterpolator(synpop_interpolation):
         avg_person_per_hhs_df.to_csv(os.path.join(self.output_folder, fn_avg_hhsize))
         self.logger.info(f'Average household size is saved to {fn_avg_hhsize}')
 
-        final_output_pop_file = f'{horizon_year}_interpolated_hhs_and_persons_from_{left_synpop.data_year}_{right_synpop.data_year}.h5'
+        final_output_pop_file = f'{horizon_year}_interpolated_hh_and_persons_from_{left_synpop.data_year}_{right_synpop.data_year}.h5'
         self.interpolated_hhs_df = target_hhs_df
         self.interpolated_persons_df = target_persons_df
         

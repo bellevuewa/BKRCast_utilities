@@ -9,6 +9,7 @@ import pandas as pd
 import utility
 from config import *
 
+lookup_file = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
 TAZ_Subarea_File_Name = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv'
 
 def check_results():
@@ -28,7 +29,7 @@ def check_results():
     # step B updated parcel hhs
     adjusted_hhs_stepB = pd.read_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file))
     parcel_taz_lookup = pd.read_csv(lookup_file)
-    city_to_check = ['Bellevue', 'Kirkland']
+    city_to_check = ['Bellevue', 'Redmond', 'Kirkland']
     for city in city_to_check:
         parcel_taz_city = parcel_taz_lookup[parcel_taz_lookup['Jurisdiction']==city.upper()]
         adjusted_hhs_city = adjusted_hhs_stepB[adjusted_hhs_stepB['PSRC_ID'].isin(parcel_taz_city['PSRC_ID'])]
@@ -60,8 +61,13 @@ def check_results():
     workers_by_hhs_df = workers_df.groupby('hhno').sum().reset_index()
     hh_df = updated_h5_hh.merge(workers_by_hhs_df, on = 'hhno', how = 'left')
     taz_subarea = pd.read_csv(TAZ_Subarea_File_Name, sep = ",", index_col = "BKRCastTAZ")
+    taz_subarea = taz_subarea.rename(columns={'Jurisdiction': 'Jurisdiction_old'})
+    taz_lookup = parcel_taz_lookup[parcel_taz_lookup['Jurisdiction'].isin(['BELLEVUE', 'KIRKLAND', 'REDMOND'])][['Jurisdiction', 'BKRCastTAZ']].copy().drop_duplicates()
+    taz_subarea = taz_subarea.reset_index().merge(taz_lookup, on='BKRCastTAZ', how='left')
+    mask = pd.isna(taz_subarea['Jurisdiction'])
+    taz_subarea.loc[mask, 'Jurisdiction'] = taz_subarea.loc[mask, 'Jurisdiction_old']
 
-    hh_taz = hh_df.join(taz_subarea, on = 'hhtaz')
+    hh_taz = hh_df.merge(taz_subarea, left_on = 'hhtaz', right_on='BKRCastTAZ', how='left')
     hh_taz['total_persons'] = hh_taz['hhexpfac'] * hh_taz['hhsize']
     hh_taz['total_hhs'] = hh_taz['hhexpfac']
 

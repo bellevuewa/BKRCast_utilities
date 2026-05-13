@@ -44,6 +44,7 @@ class SynPop:
         self.lookup_df = None
         self.hhs_by_parcel_df = None
         self.cob_du_df = None
+        self.kc_du_df = None
 
         # step C
         self.hhs_df = None
@@ -79,6 +80,7 @@ class SynPop:
         self.base_hh_df['base_total_hhs'] = self.base_hh_df['hhexpfac']
 
         self.parcel_df = pd.read_csv(parcel_filename, low_memory=False)
+        self.parcel_df.loc[self.parcel_df['Jurisdiction']=='Redmond', 'Jurisdiction'] = 'REDMOND'
         self.future_hh_df = self.future_hh_df.merge(self.parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
         self.future_hhs_by_geoid10 = self.future_hh_df.groupby('GEOID10')[['future_total_hhs', 'future_total_persons']].sum()
         self.base_hh_df = self.base_hh_df.merge(self.parcel_df, how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
@@ -192,87 +194,186 @@ class SynPop:
         """
 
         self.lookup_df = pd.read_csv(lookup_file, low_memory = False)
+        self.lookup_df.loc[self.lookup_df['Jurisdiction']=='Redmond', 'Jurisdiction'] = 'REDMOND'
         self.hhs_by_parcel_df = pd.read_csv(hhs_by_parcel)
         self.cob_du_df = pd.read_csv(os.path.join(working_folder_lu, cob_du_file))
+        self.kc_du_df = pd.read_csv(os.path.join(working_folder_lu, kc_du_file))
+        # get areas
+        areas = subset_area.copy()
 
         # make a deep copy of hhs_by_parcel_df for number adjusting
         adjusted_hhs_by_parcel_df = self.hhs_by_parcel_df.copy(deep=True)
         adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.rename(columns = {'total_hhs_by_parcel': 'adj_hhs_by_parcel', 'total_persons_by_parcel':'adj_persons_by_parcel'})
-
-        if hhs_control_total_by_TAZ_KR != '':
-            logging.info(f'A household control file by TAZ is provided: {hhs_control_total_by_TAZ_KR}')
-            hhs_control_total_by_TAZ_KR_df = pd.read_csv(os.path.join(working_folder_lu, hhs_control_total_by_TAZ_KR))
-            juris_list = hhs_control_total_by_TAZ_KR_df['Jurisdiction'].unique()
+        
+        # Kirkland local estimates TODO: below includes duplicated dataframe, adjust them if we also have Kirkland's land use
+        if hhs_control_total_by_TAZ_K != '':
+            areas = [i for i in areas if i != 'KIRKLAND']
+            logging.info(f'A Kirkland household control file by TAZ is provided: {hhs_control_total_by_TAZ_K}')
+            hhs_control_total_by_TAZ_K_df = pd.read_csv(os.path.join(working_folder_lu, hhs_control_total_by_TAZ_K))
+            hhs_control_total_by_TAZ_K_df['total_persons'] = 0
+            hhs_control_total_by_TAZ_K_df['total_hhs'] = 0
+            juris_list = hhs_control_total_by_TAZ_K_df['Jurisdiction'].unique()
             logging.info(f'The following jurisdictions are included: {juris_list}')
-
-            hhs_control_total_by_TAZ_KR_df['total_persons'] = 0
-            hhs_control_total_by_TAZ_KR_df['total_hhs'] = 0
             # calculate households and persons by the pre-defined occupancy rates
-            if 'Kirkland' in juris_list:
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Kirkland', 'sfhhs'] = hhs_control_total_by_TAZ_KR_df['SFUnits'] * sf_occupancy_rate_Kirkland
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Kirkland', 'mfhhs'] = hhs_control_total_by_TAZ_KR_df['MFUnits'] * mf_occupancy_rate_Kirkland
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Kirkland', 'total_hhs'] = hhs_control_total_by_TAZ_KR_df['sfhhs'] + hhs_control_total_by_TAZ_KR_df['mfhhs']
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Kirkland', 'total_persons'] = hhs_control_total_by_TAZ_KR_df['sfhhs'] * avg_persons_per_sfhh_Kirkland + hhs_control_total_by_TAZ_KR_df['mfhhs'] * avg_persons_per_mfhh_Kirkland
-            if 'Redmond' in juris_list:
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Redmond', 'sfhhs'] = hhs_control_total_by_TAZ_KR_df['SFUnits'] * sf_occupancy_rate_Redmond
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Redmond', 'mfhhs'] = hhs_control_total_by_TAZ_KR_df['MFUnits'] * mf_occupancy_rate_Redmond
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Redmond', 'total_hhs'] = hhs_control_total_by_TAZ_KR_df['sfhhs'] + hhs_control_total_by_TAZ_KR_df['mfhhs']
-                hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['Jurisdiction'] == 'Redmond', 'total_persons'] = hhs_control_total_by_TAZ_KR_df['sfhhs'] * avg_persons_per_sfhh_Redmond + hhs_control_total_by_TAZ_KR_df['mfhhs'] * avg_persons_per_mfhh_Redmond
+            mask = hhs_control_total_by_TAZ_K_df['Jurisdiction'].isin(juris_list)
+            hhs_control_total_by_TAZ_K_df.loc[mask, 'sfhhs'] = hhs_control_total_by_TAZ_K_df[mask]['SFUnits'] * sf_occupancy_rate_Kirkland
+            hhs_control_total_by_TAZ_K_df.loc[mask, 'mfhhs'] = hhs_control_total_by_TAZ_K_df[mask]['MFUnits'] * mf_occupancy_rate_Kirkland
+            hhs_control_total_by_TAZ_K_df.loc[mask, 'total_hhs'] = hhs_control_total_by_TAZ_K_df[mask]['sfhhs'] + hhs_control_total_by_TAZ_K_df[mask]['mfhhs']
+            hhs_control_total_by_TAZ_K_df.loc[mask, 'total_persons'] = hhs_control_total_by_TAZ_K_df[mask]['sfhhs'] * avg_persons_per_sfhh_Kirkland + hhs_control_total_by_TAZ_K_df[mask]['mfhhs'] * avg_persons_per_mfhh_Kirkland
 
             # get parcels within trip model Redmond and Kirkland TAZ (old taz system: TMTAZ)
-            parcels_in_trip_model_TAZ_df = pd.merge(self.hhs_by_parcel_df[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel']], self.lookup_df.loc[self.lookup_df['BKRTMTAZ'].notna(), ['PSRC_ID', 'Jurisdiction', 'BKRTMTAZ']], on = 'PSRC_ID', how = 'inner')
-            parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_KR_df[['BKRTMTAZ']], on  = 'BKRTMTAZ', how = 'inner')
+            parcels_in_trip_model_TAZ_df = pd.merge(self.hhs_by_parcel_df[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel', 'BKRCastTAZ']], self.lookup_df.loc[self.lookup_df['BKRTMTAZ'].notna(), ['PSRC_ID', 'Jurisdiction', 'BKRTMTAZ']], on = 'PSRC_ID', how = 'inner')
+            _taz_col = ''
+            if 'BKRTMTAZ' in parcels_in_trip_model_TAZ_df.columns and 'BKRTMTAZ' in hhs_control_total_by_TAZ_K_df.columns:
+                parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_K_df[['BKRTMTAZ']], on  = 'BKRTMTAZ', how = 'inner')
+                _taz_col = 'BKRTMTAZ'
+            elif 'PSRC_ID' in parcels_in_trip_model_TAZ_df.columns and 'PSRC_ID' in hhs_control_total_by_TAZ_K_df.columns:
+                parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_K_df[['PSRC_ID']], on  = 'PSRC_ID', how='left')
+                _taz_col = 'BKRCastTAZ'
+            else:
+                print('Error! Check the TAZ column name before proceeding!')
 
-            hhs_by_TAZ_df = parcels_in_trip_model_TAZ_df[['BKRTMTAZ', 'total_hhs_by_parcel', 'total_persons_by_parcel']].groupby('BKRTMTAZ').sum()
-            hhs_by_TAZ_df = pd.merge(hhs_by_TAZ_df, hhs_control_total_by_TAZ_KR_df.loc[hhs_control_total_by_TAZ_KR_df['total_hhs'] >= 0, ['BKRTMTAZ', 'total_hhs', 'total_persons']], on = 'BKRTMTAZ', how = 'outer')
+            hhs_by_TAZ_df = parcels_in_trip_model_TAZ_df[[_taz_col, 'total_hhs_by_parcel', 'total_persons_by_parcel']].groupby(_taz_col).sum()
+            hhs_control_total_by_TAZ_K_df_ = hhs_control_total_by_TAZ_K_df.loc[hhs_control_total_by_TAZ_K_df['total_hhs'] >= 0, [_taz_col, 'total_hhs', 'total_persons']].groupby(_taz_col).sum()
+            hhs_by_TAZ_df = pd.merge(hhs_by_TAZ_df, hhs_control_total_by_TAZ_K_df_, on = _taz_col, how = 'left')
             hhs_by_TAZ_df.rename(columns={'total_hhs_by_parcel': 'total_hhs_interpolated_psrc', 
                                           'total_persons_by_parcel': 'total_persons_interpolated_psrc',
                                           'total_hhs': 'total_hhs_control', 'total_persons': 'total_persons_control'}, inplace=True)
             hhs_by_TAZ_df.fillna(value = {'total_hhs_control' : 0, 'total_persons_control' : 0}, inplace = True)
+            hhs_by_TAZ_df = hhs_by_TAZ_df.reset_index()
             hhs_by_TAZ_df.to_csv(os.path.join(working_folder_synpop, hhs_by_taz_comparison_file), index = False)
 
             # start scaling the hhs of Kirkland in the PSRC's interpolated data to the Kirkland landuse data
-            logging.info("Scaling Kirkland/Redmond's interpolated hhs to their local forecasts...")
-            adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(parcels_in_trip_model_TAZ_df[['PSRC_ID', 'BKRTMTAZ']], on = 'PSRC_ID', how = 'left')
-
+            logging.info("Scaling Kirkland's interpolated hhs to their local forecasts...")
+            if _taz_col not in parcels_in_trip_model_TAZ_df.columns:
+                adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(parcels_in_trip_model_TAZ_df[['PSRC_ID', _taz_col]], on = 'PSRC_ID', how = 'left')        
+            
             for city in juris_list:
-                # reset hhs and persons to zero in Kirkland and Redmond parcels that are not included in local estimates. We will use their local forecast.
-                adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['Jurisdiction'] == city.upper()) & \
-                                              adjusted_hhs_by_parcel_df['BKRTMTAZ'].isna(), ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
+                # reset hhs and persons to zero in Kirkland parcels that are not included in interpolated estimates. We will use their local forecast.
+                adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['Jurisdiction'].isin(city.upper(), city)) & \
+                                              adjusted_hhs_by_parcel_df[_taz_col].isna(), ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
             # for a TAZ that has no hhs in PSRC erstimate but has hhs in local jurisdiction estimate, evenly distribute hhs to all parcels in that TAZ
             tazs_for_evenly_distri_df = hhs_by_TAZ_df.loc[hhs_by_TAZ_df['total_hhs_interpolated_psrc'] == 0]
             logging.info('Evenly distribute hhs on parcels in the following trip model TAZs: ')
             for row in tazs_for_evenly_distri_df.itertuples():
-                logging.info(f"\tBKRTMTAZ: {row.BKRTMTAZ}, total_hhs_interpolated_psrc: {row.total_hhs_interpolated_psrc}, total_hhs_control: {row.total_hhs_control}")
+                logging.info(f"\t{_taz_col}: {getattr(row, _taz_col)}, total_hhs_interpolated_psrc: {row.total_hhs_interpolated_psrc}, total_hhs_control: {row.total_hhs_control}")
                 # find parcels within this taz
-                counts = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRTMTAZ'] == row.BKRTMTAZ].shape[0]
+                counts = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col)].shape[0]
                 if counts == 0 and row.total_hhs_control > 0:
-                    logging.info(f'TAZ {row.BKRTMTAZ} is has no parcels but has {row.total_hhs_control} households.')
+                    logging.info(f'TAZ {getattr(row, _taz_col)} is has no parcels but has {row.total_hhs_control} households.')
                     continue
-                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRTMTAZ'] == row.BKRTMTAZ, 'adj_hhs_by_parcel'] = row.total_hhs_control / counts
-                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['BKRTMTAZ'] == row.BKRTMTAZ, 'adj_persons_by_parcel'] = row.total_persons_control / counts
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col), 'adj_hhs_by_parcel'] = row.total_hhs_control / counts
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col), 'adj_persons_by_parcel'] = row.total_persons_control / counts
 
             # for other parcels, scale up hhs to match local jurisdiction's forecasts by applying factors calculated in TAZ level
             tazs_for_proportional_distri_df = hhs_by_TAZ_df.loc[hhs_by_TAZ_df['total_hhs_interpolated_psrc'] > 0].copy(deep=True)
             tazs_for_proportional_distri_df['ratio_hhs'] = tazs_for_proportional_distri_df['total_hhs_control'] / tazs_for_proportional_distri_df['total_hhs_interpolated_psrc']
             tazs_for_proportional_distri_df['ratio_persons'] = tazs_for_proportional_distri_df['total_persons_control'] / tazs_for_proportional_distri_df['total_persons_interpolated_psrc']
             # fill the scaled factors to the main table and begin scaling
-            adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(tazs_for_proportional_distri_df[['BKRTMTAZ', 'ratio_hhs', 'ratio_persons']], on = 'BKRTMTAZ', how = 'left')
+            adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(tazs_for_proportional_distri_df[[_taz_col, 'ratio_hhs', 'ratio_persons']], on = _taz_col, how = 'left')
             adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.fillna(value = {'ratio_hhs' : 1, 'ratio_persons' : 1})
-            adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_hhs']
-            adjusted_hhs_by_parcel_df['adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_persons']
+            adjusted_hhs_by_parcel_df['adj_hhs_by_parcel_'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_hhs']
+            adjusted_hhs_by_parcel_df['adj_persons_by_parcel_'] = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_persons']
+            # replace the interpolated hhs and persons with the local estimates
+            for city in juris_list:
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'].isin(city.upper(), city), 'adj_hhs_by_parcel'] = 0
+            mask = adjusted_hhs_by_parcel_df[_taz_col].isin(hhs_control_total_by_TAZ_K_df_.index)
+            adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel_']
             adjusted_hhs_by_parcel_df.drop(columns = ['ratio_hhs', 'ratio_persons'], inplace = True)
             # pose comparison between the scaled and the control
-            hhs_by_TAZ_df = hhs_by_TAZ_df.merge(adjusted_hhs_by_parcel_df.groupby(by='BKRTMTAZ').sum()[['adj_hhs_by_parcel', 'adj_persons_by_parcel']].reset_index(),
-                                                on='BKRTMTAZ')
+            hhs_by_TAZ_df = hhs_by_TAZ_df.merge(adjusted_hhs_by_parcel_df.groupby(by=_taz_col).sum()[['adj_hhs_by_parcel', 'adj_persons_by_parcel']].reset_index(),
+                                                on=_taz_col)
         else:
-            logging.info('No household estimate is provided by Redmond and Kirkland. ')
+            logging.info('No household estimate is provided by Kirkland.')
+
+        # Redmond local estiamtes
+        if hhs_control_total_by_TAZ_R != '':
+            areas = [i for i in areas if i != 'REDMOND']
+            logging.info(f'A Redmond household control file by TAZ is provided: {hhs_control_total_by_TAZ_R}')
+            hhs_control_total_by_TAZ_R_df = pd.read_csv(os.path.join(working_folder_lu, hhs_control_total_by_TAZ_R))
+            juris_list = hhs_control_total_by_TAZ_R_df['Jurisdiction'].unique()
+
+            hhs_control_total_by_TAZ_R_df['total_persons'] = 0
+            hhs_control_total_by_TAZ_R_df['total_hhs'] = 0
+            # calculate households and persons by the pre-defined occupancy rates
+            mask = hhs_control_total_by_TAZ_R_df['Jurisdiction'].isin(juris_list)
+            hhs_control_total_by_TAZ_R_df.loc[mask, 'sfhhs'] = hhs_control_total_by_TAZ_R_df[mask]['SFUnits'] * sf_occupancy_rate_Redmond
+            hhs_control_total_by_TAZ_R_df.loc[mask, 'mfhhs'] = hhs_control_total_by_TAZ_R_df[mask]['MFUnits'] * mf_occupancy_rate_Redmond
+            hhs_control_total_by_TAZ_R_df.loc[mask, 'total_hhs'] = hhs_control_total_by_TAZ_R_df[mask]['sfhhs'] + hhs_control_total_by_TAZ_R_df[mask]['mfhhs']
+            hhs_control_total_by_TAZ_R_df.loc[mask, 'total_persons'] = hhs_control_total_by_TAZ_R_df[mask]['sfhhs'] * avg_persons_per_sfhh_Redmond + hhs_control_total_by_TAZ_R_df[mask]['mfhhs'] * avg_persons_per_mfhh_Redmond
+
+            # get parcels within trip model Redmond TAZ (old taz system: TMTAZ)
+            parcels_in_trip_model_TAZ_df = pd.merge(self.hhs_by_parcel_df[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel', 'BKRCastTAZ']], self.lookup_df.loc[self.lookup_df['BKRTMTAZ'].notna(), ['PSRC_ID', 'Jurisdiction', 'BKRTMTAZ']], on = 'PSRC_ID', how = 'inner')
+            _taz_col = ''
+            if 'BKRTMTAZ' in parcels_in_trip_model_TAZ_df.columns and 'BKRTMTAZ' in hhs_control_total_by_TAZ_R_df.columns:
+                parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_R_df[['BKRTMTAZ']], on  = 'BKRTMTAZ', how = 'inner')
+                _taz_col = 'BKRTMTAZ'
+            elif 'PSRC_ID' in parcels_in_trip_model_TAZ_df.columns and 'PSRC_ID' in hhs_control_total_by_TAZ_R_df.columns:
+                parcels_in_trip_model_TAZ_df = parcels_in_trip_model_TAZ_df.merge(hhs_control_total_by_TAZ_R_df[['PSRC_ID']], on  = 'PSRC_ID', how='left')
+                _taz_col = 'BKRCastTAZ'
+            else:
+                print('Error! Check the TAZ column name before proceeding!')
+
+            hhs_by_TAZ_df = parcels_in_trip_model_TAZ_df[[_taz_col, 'total_hhs_by_parcel', 'total_persons_by_parcel']].groupby(_taz_col).sum()
+            hhs_control_total_by_TAZ_R_df_ = hhs_control_total_by_TAZ_R_df.loc[hhs_control_total_by_TAZ_R_df['total_hhs'] >= 0, [_taz_col, 'total_hhs', 'total_persons']].groupby(_taz_col).sum()
+            hhs_by_TAZ_df = pd.merge(hhs_by_TAZ_df, hhs_control_total_by_TAZ_R_df_, on = _taz_col, how = 'left')
+            hhs_by_TAZ_df.rename(columns={'total_hhs_by_parcel': 'total_hhs_interpolated_psrc', 
+                                          'total_persons_by_parcel': 'total_persons_interpolated_psrc',
+                                          'total_hhs': 'total_hhs_control', 'total_persons': 'total_persons_control'}, inplace=True)
+            hhs_by_TAZ_df.fillna(value = {'total_hhs_control' : 0, 'total_persons_control' : 0}, inplace = True)
+            hhs_by_TAZ_df = hhs_by_TAZ_df.reset_index()
+            hhs_by_TAZ_df.to_csv(os.path.join(working_folder_synpop, hhs_by_taz_comparison_file), index = False)
+
+            # start scaling the hhs of Redmond in the PSRC's interpolated data to the Redmond landuse data
+            logging.info("Scaling Redmond's interpolated hhs to their local forecasts...")
+            if _taz_col not in parcels_in_trip_model_TAZ_df.columns:
+                adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(parcels_in_trip_model_TAZ_df[['PSRC_ID', _taz_col]], on = 'PSRC_ID', how = 'left')        
+            
+            for city in juris_list:
+                # reset hhs and persons to zero in Kirkland and Redmond parcels that are not included in interpolated estimates. We will use their local forecast.
+                adjusted_hhs_by_parcel_df.loc[(adjusted_hhs_by_parcel_df['Jurisdiction'].isin([city.upper(), city])) & \
+                                              (adjusted_hhs_by_parcel_df[_taz_col].isna()), ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
+
+            # for a TAZ that has no hhs in PSRC erstimate but has hhs in local jurisdiction estimate, evenly distribute hhs to all parcels in that TAZ
+            tazs_for_evenly_distri_df = hhs_by_TAZ_df.loc[hhs_by_TAZ_df['total_hhs_interpolated_psrc'] == 0]
+            logging.info('Evenly distribute hhs on parcels in the following trip model TAZs: ')
+            for row in tazs_for_evenly_distri_df.itertuples():
+                logging.info(f"\t{_taz_col}: {getattr(row, _taz_col)}, total_hhs_interpolated_psrc: {row.total_hhs_interpolated_psrc}, total_hhs_control: {row.total_hhs_control}")
+                # find parcels within this taz
+                counts = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col)].shape[0]
+                if counts == 0 and row.total_hhs_control > 0:
+                    logging.info(f'TAZ {getattr(row, _taz_col)} is has no parcels but has {row.total_hhs_control} households.')
+                    continue
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col), 'adj_hhs_by_parcel'] = row.total_hhs_control / counts
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df[_taz_col] == getattr(row, _taz_col), 'adj_persons_by_parcel'] = row.total_persons_control / counts
+
+            # for other parcels, scale up hhs to match local jurisdiction's forecasts by applying factors calculated in TAZ level
+            tazs_for_proportional_distri_df = hhs_by_TAZ_df.loc[hhs_by_TAZ_df['total_hhs_interpolated_psrc'] > 0].copy(deep=True)
+            tazs_for_proportional_distri_df['ratio_hhs'] = tazs_for_proportional_distri_df['total_hhs_control'] / tazs_for_proportional_distri_df['total_hhs_interpolated_psrc']
+            tazs_for_proportional_distri_df['ratio_persons'] = tazs_for_proportional_distri_df['total_persons_control'] / tazs_for_proportional_distri_df['total_persons_interpolated_psrc']
+            # fill the scaled factors to the main table and begin scaling
+            adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(tazs_for_proportional_distri_df[[_taz_col, 'ratio_hhs', 'ratio_persons']], on = _taz_col, how = 'left')
+            adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.fillna(value = {'ratio_hhs' : 1, 'ratio_persons' : 1})
+            adjusted_hhs_by_parcel_df['adj_hhs_by_parcel_'] = adjusted_hhs_by_parcel_df['adj_hhs_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_hhs']
+            adjusted_hhs_by_parcel_df['adj_persons_by_parcel_'] = adjusted_hhs_by_parcel_df['adj_persons_by_parcel'] * adjusted_hhs_by_parcel_df['ratio_persons']
+            # replace the interpolated hhs and persons with the local estimates
+            for city in juris_list:
+                adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'].isin([city.upper(), city]), 'adj_hhs_by_parcel'] = 0
+            mask = adjusted_hhs_by_parcel_df[_taz_col].isin(hhs_control_total_by_TAZ_R_df_.index)
+            adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel_']
+            adjusted_hhs_by_parcel_df.drop(columns = ['ratio_hhs', 'ratio_persons'], inplace = True)
+            # pose comparison between the scaled and the control
+            hhs_by_TAZ_df = hhs_by_TAZ_df.merge(adjusted_hhs_by_parcel_df.groupby(by=_taz_col).sum()[['adj_hhs_by_parcel', 'adj_persons_by_parcel']].reset_index(),
+                                                on=_taz_col)
+        else:
+            logging.info('No household estimate is provided by Redmond.')
 
         # replace hhs estimate with COB's forecast
         # if some parcels are missing from the cob_du_df, export them for further investigation.
         cob_total_parcels_df = self.hhs_by_parcel_df.loc[self.hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE']
         cob_parcels_provided = self.cob_du_df.shape[0]
+        areas = [i for i in areas if i != 'BELLEVUE']
         if cob_total_parcels_df.shape[0] != cob_parcels_provided:
             missing_parcels = set()
             missing_fname = ''
@@ -311,8 +412,23 @@ class SynPop:
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == 'BELLEVUE', ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
         # it is important to use cobflag rather than Jurisdiction, because (hhs and persons in) parcels flagged by cobflag are provided by COB staff.
-        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['sfhhs'] + adjusted_hhs_by_parcel_df['mfhhs']
-        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['cobflag'] == 'cob', 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df['sfpersons'] + adjusted_hhs_by_parcel_df['mfpersons']
+        mask = adjusted_hhs_by_parcel_df['cobflag'] == 'cob'
+        adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df[mask]['sfhhs'] + adjusted_hhs_by_parcel_df[mask]['mfhhs']
+        adjusted_hhs_by_parcel_df.loc[mask, 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df[mask]['sfpersons'] + adjusted_hhs_by_parcel_df[mask]['mfpersons']
+
+        # other subset areas, using interpolation of King County generated from step 1
+        self.kc_du_df = self.kc_du_df.merge(self.cob_du_df[['PSRC_ID', 'cobflag']], on = 'PSRC_ID', how = 'left')
+        mask = (adjusted_hhs_by_parcel_df['cobflag'] != 'cob') & (adjusted_hhs_by_parcel_df['Jurisdiction'].isin(areas))
+        self.kc_du_df['sfhhs'] = self.kc_du_df['SFUnits'] * sf_occupancy_rate 
+        self.kc_du_df['mfhhs'] = self.kc_du_df['MFUnits'] * mf_occupancy_rate
+        self.kc_du_df['sfpersons'] = self.kc_du_df['sfhhs'] * avg_persons_per_sfhh
+        self.kc_du_df['mfpersons'] = self.kc_du_df['mfhhs'] * avg_persons_per_mfhh
+        self.kc_du_df['kc_hhs'] = self.kc_du_df['sfhhs'] + self.kc_du_df['mfhhs']
+        self.kc_du_df['kc_persons'] = self.kc_du_df['sfpersons'] + self.kc_du_df['mfpersons']
+        adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(self.kc_du_df[['PSRC_ID', 'kc_hhs', 'kc_persons']], on='PSRC_ID', how='left')
+        adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.fillna(value = {'kc_hhs' : 0, 'kc_persons' : 0})
+        adjusted_hhs_by_parcel_df.loc[mask, 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df[mask]['kc_hhs']
+        adjusted_hhs_by_parcel_df.loc[mask, 'adj_persons_by_parcel'] = adjusted_hhs_by_parcel_df[mask]['kc_persons']
 
         ### Control Rounding
         ### hhs should not be fractions, so round the hhs to integer, controlled by BKRCastTAZ
@@ -330,7 +446,7 @@ class SynPop:
             cob_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['cobflag']=='cob'].copy(deep=True)
             cob_before_ = cob_before[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
             juris_list = [city.upper() for city in juris_list]
-            if hhs_control_total_by_TAZ_KR:
+            if hhs_control_total_by_TAZ_R:  # TODO
                 kr_tazs_before = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['Jurisdiction'].isin(juris_list)].copy(deep=True)
                 kr_tazs_before_ = kr_tazs_before[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
 
@@ -459,48 +575,53 @@ class SynPop:
             cob_after.to_csv(os.path.join(working_folder_synpop, 'COB_population_before_after.csv'))
             logging.info(f"Cross check table exported in: {os.path.join(working_folder_synpop, 'COB_population_before_after.csv')}")
             # Kirkland and Redmond
-            if hhs_control_total_by_TAZ_KR:
+            if hhs_control_total_by_TAZ_R:  #TODO
                 for city in juris_list:
                     kr_tazs = list(adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == city]['BKRCastTAZ'])
-                    kr_tmtazs = list(adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == city]['BKRTMTAZ'])
                     kr_after_taz = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['BKRCastTAZ'].isin(kr_tazs)].copy(deep=True)
-                    kr_after_tmtaz = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['BKRTMTAZ'].isin(kr_tmtazs)].copy(deep=True)
                     kr_after_taz = kr_after_taz[['BKRCastTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRCastTAZ').sum().reset_index()
-                    kr_after_tmtaz = kr_after_tmtaz[['BKRTMTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRTMTAZ').sum().reset_index()
                     kr_after_taz['controlled_hhs'] = 0
-                    kr_after_tmtaz['controlled_hhs'] = 0
                     # get the control hhs and persons at the BKRCast TAZ level
                     for _, record in kr_tazs_before_.iterrows():
                         if record['BKRCastTAZ'] in kr_tazs:
                             kr_after_taz.loc[kr_after_taz['BKRCastTAZ']==record['BKRCastTAZ'], 'controlled_hhs'] = record['adj_hhs_by_parcel']
-                    # get the control hhs and persons at the TMTAZ level
-                    for _, record in hhs_by_TAZ_df.iterrows():
-                        kr_after_tmtaz.loc[kr_after_tmtaz['BKRTMTAZ']==record['BKRTMTAZ'], 'controlled_hhs'] = record['total_hhs_control']
                     # calculate the difference at the BKRCast TAZ level
                     kr_after_taz['cross_check_hhs'] = kr_after_taz['adj_hhs_by_parcel'] - kr_after_taz['controlled_hhs']
-                    # calculate the difference at the TMTAZ level
-                    kr_after_tmtaz['cross_check_hhs'] = kr_after_tmtaz['adj_hhs_by_parcel'] - kr_after_tmtaz['controlled_hhs']
                     # print the comparison summary at the BKRCast TAZ level
                     logging.info('\n')
                     logging.info('=====')
-                    logging.info(f"Kirkland (and Redmond) hhs before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_hhs_by_parcel'].sum():,.2f}")
-                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_hhs_by_parcel'].sum():,.0f}")
+                    logging.info(f"Kirkland (and/or Redmond) hhs before control rounding at the BKRCast TAZ level: {kr_tazs_before['adj_hhs_by_parcel'].sum():,.2f}")
+                    logging.info(f"Kirkland (and/or Redmond) hhs after control rounding at the BKRCast TAZ level: {kr_after_taz['adj_hhs_by_parcel'].sum():,.0f}")
                     logging.info(f"total hhs control rounding difference (after - before) at the BKRCast TAZ level: {kr_after_taz['cross_check_hhs'].sum():,.2f}")
                     kr_after_taz.to_csv(os.path.join(working_folder_synpop, 'KirkRed_population_before_after_BKRCastTAZ.csv'))
                     logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'KirkRed_population_before_after_BKRCastTAZ.csv')}")
                     logging.info('\n')
                     logging.info('=====')
                     # print the comparison summary at the TMTAZ level
-                    logging.info(f"Kirkland (and Redmond) control hhs at the TMTAZ level: {kr_after_tmtaz['controlled_hhs'].sum():,.0f}")
-                    logging.info(f"Kirkland (and Redmond) hhs after control rounding at the TMTAZ level: {kr_after_tmtaz['adj_hhs_by_parcel'].sum():,.0f}")
-                    logging.info(f"total hhs control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_hhs'].sum():,.2f}")
-                    kr_after_taz.to_csv(os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv'))
-                    logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv')}\n")
+                    if 'BKRTMTAZ' in adjusted_hhs_by_parcel_df.columns:
+                        kr_tmtazs = list(adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == city]['BKRTMTAZ'])
+                        kr_after_tmtaz = adjusted_hhs_by_parcel_df[adjusted_hhs_by_parcel_df['BKRTMTAZ'].isin(kr_tmtazs)].copy(deep=True)
+                        kr_after_tmtaz = kr_after_tmtaz[['BKRTMTAZ', 'adj_hhs_by_parcel', 'adj_persons_by_parcel']].groupby(by='BKRTMTAZ').sum().reset_index()
+                        kr_after_tmtaz['controlled_hhs'] = 0
+                        # get the control hhs and persons at the TMTAZ level
+                        for _, record in hhs_by_TAZ_df.iterrows():
+                            kr_after_tmtaz.loc[kr_after_tmtaz['BKRTMTAZ']==record['BKRTMTAZ'], 'controlled_hhs'] = record['total_hhs_control']
+                        # calculate the difference at the TMTAZ level
+                        kr_after_tmtaz['cross_check_hhs'] = kr_after_tmtaz['adj_hhs_by_parcel'] - kr_after_tmtaz['controlled_hhs']
+                        # print
+                        logging.info(f"Kirkland (and Redmond) control hhs at the TMTAZ level: {kr_after_tmtaz['controlled_hhs'].sum():,.0f}")
+                        logging.info(f"Kirkland (and Redmond) hhs after control rounding at the TMTAZ level: {kr_after_tmtaz['adj_hhs_by_parcel'].sum():,.0f}")
+                        logging.info(f"total hhs control rounding difference (after - control) at the TMTAZ level: {kr_after_tmtaz['cross_check_hhs'].sum():,.2f}")
+                        kr_after_taz.to_csv(os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv'))
+                        logging.info(f"cross check table exported in: {os.path.join(working_folder_synpop, 'KirkRed_population_before_after_TMTAZ.csv')}\n")
 
 
-        if  hhs_control_total_by_TAZ_KR != '':
+        if  hhs_control_total_by_TAZ_K != '' or hhs_control_total_by_TAZ_R != '':
             # export adjusted hhs by parcel to file
-            adjusted_hhs_by_parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'BKRTMTAZ', 'adj_hhs_by_parcel']].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file), index = False)
+            if 'BKRTMTAZ' in adjusted_hhs_by_parcel_df.columns:
+                adjusted_hhs_by_parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'BKRTMTAZ', 'adj_hhs_by_parcel']].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file), index = False)
+            else:
+                adjusted_hhs_by_parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'adj_hhs_by_parcel']].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file), index = False)
         else:
             # export adjusted hhs by parcel to file
             adjusted_hhs_by_parcel_df[['PSRC_ID', 'GEOID10', 'BKRCastTAZ', 'adj_hhs_by_parcel']].rename(columns = {'adj_hhs_by_parcel':'total_hhs'}).to_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file), index = False)

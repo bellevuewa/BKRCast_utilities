@@ -12,34 +12,34 @@ Land use configuration and the synthetic population configuration
 
 modeller_initial = 'oa'
 timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-version = 'v0.0'
-step = 5  # step = 1, 2, 3, 4, 5, 'A', 'B', or 'C'. See main.py for more information
+version = 'v2.1'
+step = 'B'  # step = 1, 2, 3, 4, 5, 'A', 'B', or 'C'. See main.py for more information
 
 # parcel vs TAZ lookup file
 lookup_file = r'I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\parcel_TAZ_2014_lookup.csv'
 # year range and target year
 base_year = 2014
-target_year = 2024
+target_year = 2025
 future_year =2050
 
 #####
 # Land use configurations
 #####
-working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear'
+working_folder_lu = r'Z:\Modeling Group\BKRCast\LandUse\2025baseyear'
 #=====
 # Step 1: Prepare land use data
 #=====
 
 ## input paths for step 1
-kingcsqft = 'Base By PSRCID (12-31-2024).csv'
+kingcsqft = 'Base By PSRCID (12-31-2025).csv'  # from Bryce
 subarea_file = r"I:\Modeling and Analysis Group\07_ModelDevelopment&Upgrade\NextgenerationModel\BasicData\TAZ_subarea.csv"
 
 ## output paths for step 1
-kc_job_file = f'2024_COB_Jobs_new_method_{modeller_initial}_{version}.csv'
-kc_SQFT_file = f'2024_COB_Sqft_{modeller_initial}_{version}.csv'
+kc_job_file = f'2025_COB_Jobs_new_method_{modeller_initial}_{version}.csv'
+kc_SQFT_file = f'2025_COB_Sqft_{modeller_initial}_{version}.csv'
 error_parcel_file = f'parcels_not_in_2014_PSRC_parcels_{modeller_initial}_{version}.csv'
-kc_du_file = f'2024_KC_housingunits_{modeller_initial}_{version}.csv'
-cob_du_file = f'2024_COB_housingunits_{modeller_initial}_{version}.csv'
+kc_du_file = f'2025_KC_housingunits_{modeller_initial}_{version}.csv'
+cob_du_file = f'2025_COB_housingunits_{modeller_initial}_{version}.csv'
 
 ## other configurations for step 1
 """
@@ -98,7 +98,7 @@ Jurisdiction = None
 # Synthetic population configurations
 #####
 
-working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear'
+working_folder_synpop = r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2025baseyear_TestFrom2024baseyear'
 #r'I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2023baseyear_with_RedmondData'
 
 #=====
@@ -111,9 +111,9 @@ parcel_filename = copy.copy(lookup_file)
 ofm_estimate_template_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\OFM_estimate_template.csv"
 
 ## output paths for step A
-interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_ofm_estimate_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
-hhs_by_parcel_filename = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_hhs_by_parcels_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
-final_output_pop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2024baseyear\2024_interpolated_synthetic_population_from_SC" + f'_{modeller_initial}_{version}' + ".h5"
+interploated_ofm_estimate_by_GEOID = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2025baseyear_TestFrom2024baseyear\2025_ofm_estimate_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
+hhs_by_parcel_filename = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2025baseyear_TestFrom2024baseyear\2025_hhs_by_parcels_from_PSRC_2014_2050" + f'_{modeller_initial}_{version}' + ".csv"
+final_output_pop_file = r"I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2025baseyear_TestFrom2024baseyear\2025_interpolated_synthetic_population_from_SC" + f'_{modeller_initial}_{version}' + ".h5"
 
 ## step A doesn't require other configurations
 
@@ -129,40 +129,62 @@ popsim_control_file = 'acecon0403.csv'
 TAZ level control total (households) from Kirkland and Redmond. (can be any TAZ)
 if there is no local estimate from Redmond/Kirkland, set it to ''. 
 """
-hhs_control_total_by_TAZ_KR = 'Kirkland_2024_HousingUnits_by_BKRTMTAZ.csv'  # under working_folder_lu
+hhs_control_total_by_TAZ_K = '' #'Kirkland_2024_HousingUnits_by_BKRTMTAZ.csv'  # under working_folder_lu
+hhs_control_total_by_TAZ_R = r'Redmond Land Use\2025_Redmond_housingunits.csv'
 
 ## outputs paths for step B
-hhs_by_taz_comparison_file = "2024_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison" + f'_{modeller_initial}_{version}' + ".csv"
-adjusted_hhs_by_parcel_file = "2024_final_hhs_by_parcel" + f'_{modeller_initial}_{version}' + ".csv"
-popsim_control_output_file = "ACS2016_controls_2024_Complan" + f'_{modeller_initial}_{version}' + ".csv"
-parcels_for_allocation_filename = "2024_Complan_parcels_for_allocation_local_estimate" + f'_{modeller_initial}_{version}' + ".csv"
-summary_by_jurisdiction_filename = "2024_summary_by_jurisdiction" + f'_{modeller_initial}_{version}' + ".csv"
+hhs_by_taz_comparison_file = "2025_PSRC_hhs_and_forecast_from_kik_Red_by_trip_model_TAZ_comparison" + f'_{modeller_initial}_{version}' + ".csv"
+adjusted_hhs_by_parcel_file = "2025_final_hhs_by_parcel" + f'_{modeller_initial}_{version}' + ".csv"
+popsim_control_output_file = "ACS2016_controls_2025_Complan" + f'_{modeller_initial}_{version}' + ".csv"
+parcels_for_allocation_filename = "2025_Complan_parcels_for_allocation_local_estimate" + f'_{modeller_initial}_{version}' + ".csv"
+summary_by_jurisdiction_filename = "2025_summary_by_jurisdiction" + f'_{modeller_initial}_{version}' + ".csv"
 
 ## other configurations for step B
 #==
 """
 Occupancy rate for single family and multi family households
 """
-# avg_person_per_hh_Redmond = 2.3146
-# avg_person_per_hh_Kirkland = 2.2576
-
 avg_persons_per_sfhh_Kirkland =  2.82 
-avg_persons_per_mfhh_Kirkland =  2.03
+avg_persons_per_mfhh_Kirkland =  2.08
 
 avg_persons_per_sfhh_Redmond =  2.82 
-avg_persons_per_mfhh_Redmond =  2.03
+avg_persons_per_mfhh_Redmond =  2.08
 
 sf_occupancy_rate_Kirkland = 0.952
-mf_occupancy_rate_Kirkland = 0.895
+mf_occupancy_rate_Kirkland = 0.920
 
 sf_occupancy_rate_Redmond = 0.952
-mf_occupancy_rate_Redmond = 0.895
+mf_occupancy_rate_Redmond = 0.920
 
-sf_occupancy_rate = 0.952  # from Gwen
-mf_occupancy_rate = 0.895  # from Gwen
+sf_occupancy_rate = 0.952  
+mf_occupancy_rate = 0.920
 
-avg_persons_per_sfhh =  2.82 # from Gwen
-avg_persons_per_mfhh =  2.03 # from Gwen
+avg_persons_per_sfhh =  2.82 
+avg_persons_per_mfhh =  2.08 
+
+# old start==
+## avg_person_per_hh_Redmond = 2.3146
+## avg_person_per_hh_Kirkland = 2.2576
+
+# avg_persons_per_sfhh_Kirkland =  2.82 
+# avg_persons_per_mfhh_Kirkland =  2.03
+
+# avg_persons_per_sfhh_Redmond =  2.82 
+# avg_persons_per_mfhh_Redmond =  2.03
+
+# sf_occupancy_rate_Kirkland = 0.952
+# mf_occupancy_rate_Kirkland = 0.895
+
+# sf_occupancy_rate_Redmond = 0.952
+# mf_occupancy_rate_Redmond = 0.895
+
+# sf_occupancy_rate = 0.952  # from Gwen
+# mf_occupancy_rate = 0.895  # from Gwen
+
+# avg_persons_per_sfhh =  2.82 # from Gwen
+# avg_persons_per_mfhh =  2.03 # from Gwen
+# old end==
+
 #==
 
 
@@ -171,15 +193,15 @@ avg_persons_per_mfhh =  2.03 # from Gwen
 #=====
 
 ## input paths for step C
-synthetic_households_file_name = '2024_baseyear_synthetic_households.csv'
-synthetic_population_file_name = '2024_baseyear_synthetic_persons.csv'
+synthetic_households_file_name = '2025_baseyear_synthetic_households.csv'
+synthetic_population_file_name = '2025_baseyear_synthetic_persons.csv'
 # number of hhs per parcel
 # Note: parcels_for_allocation_filename should be the output from step B: adjusted_hhs_by_parcel_file = r"2023_final_hhs_by_parcel.csv"
 
 ## output paths for step C
-updated_hhs_file_name = 'updated_2024_baseyear_synthetic_households' + f'_{modeller_initial}_{version}' + ".csv"
-updated_persons_file_name = 'updated_2024_baseyear_synthetic_persons' + f'_{modeller_initial}_{version}' + ".csv"
-h5_file_name = '2024_baseyear_hh_and_persons' + f'_{modeller_initial}_{version}' + ".h5"
+updated_hhs_file_name = 'updated_2025_baseyear_synthetic_households' + f'_{modeller_initial}_{version}' + ".csv"
+updated_persons_file_name = 'updated_2025_baseyear_synthetic_persons' + f'_{modeller_initial}_{version}' + ".csv"
+h5_file_name = '2025_baseyear_hh_and_persons' + f'_{modeller_initial}_{version}' + ".h5"
 
 ## step C doesn't require other configurations
 
@@ -198,7 +220,7 @@ parcel_file_name_latter = r'Z:\Modeling Group\BKRCast\SoundCast\2050_Inputs\2050
 
 
 ## output paths for step 3
-new_parcel_file_name = 'interpolated_parcel_file_2024_from_PSRC_2014_2050.txt'
+new_parcel_file_name = 'interpolated_parcel_file_2025_from_PSRC_2014_2050.txt'
 
 ## step 3 doesn't require other configurations
 
@@ -209,12 +231,14 @@ new_parcel_file_name = 'interpolated_parcel_file_2024_from_PSRC_2014_2050.txt'
 ## input paths for step 4
 new_bellevue_parcel_data_file_name = copy.copy(kc_job_file) # r"2023_COB_Jobs_new_method.csv"
 # if have Kirkland job parcel data, put the path below, otherwise put ''
-new_kirkland_parcel_data_file_name = 'Kirkland_2024_land_use_conversion.xlsx' # r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear\Kirkland_2024_land_use_conversion.xlsx'
+new_kirkland_parcel_data_file_name = '' # r'Z:\Modeling Group\BKRCast\LandUse\2024baseyear\Kirkland_2024_land_use_conversion.xlsx'
+new_redmond_parcel_data_file_name = r'Redmond Land Use\2025_Redmond_jobs.csv'
 original_parcel_file_name = copy.copy(new_parcel_file_name) # r"interpolated_parcel_file_2023_from_PSRC_2014_2050.txt"
 
 ## output paths for step 4
-updated_parcel_file_name = r"2024_baseyear_parcels_urbansim.txt"
-updated_parcel_file_kirkland_name = '2024_Kirkland_parcel_matching.csv'
+updated_parcel_file_name = r"2025_baseyear_parcels_urbansim.txt"
+updated_parcel_file_kirkland_name = '2025_Kirkland_parcel_matching.csv'
+updated_parcel_file_redmond_name = '2025_Redmond_parcel_matching.csv'
 
 ## other configurations for step 4
 set_Jobs_to_Zeros_All_Bel_Parcels_Not_in_New_Parcel_Data_File = True
@@ -227,6 +251,6 @@ columns_list = jobs_columns_List[1:]
 ## step 5 doesn't require input paths
 
 ## output paths for step  5
-output_parcel_file = 'updated_2024_baseyear_parcels_urbansim.txt'
+output_parcel_file = 'updated_2025_baseyear_parcels_urbansim.txt'
 
 ## step 5 doesn't require other configurations

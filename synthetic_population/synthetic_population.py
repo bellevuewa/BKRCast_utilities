@@ -634,7 +634,7 @@ class SynPop:
         ### Create control file for PopulationSim
         # note that this control file has not address control rounding for population, which will be done in PopulationSim
         popsim_control_df = pd.read_csv(os.path.join(working_folder_synpop, popsim_control_file), sep = ',')
-        hhs_by_geoid10_df =  adjusted_hhs_by_parcel_df[['GEOID10', 'adj_hhs_by_parcel']].groupby('GEOID10').sum()
+        hhs_by_geoid10_df = adjusted_hhs_by_parcel_df[['GEOID10', 'adj_hhs_by_parcel']].groupby('GEOID10').sum()
         hhs_by_geoid10_df = hhs_by_geoid10_df.merge(adj_persons_by_GEOID10, left_index = True, right_index = True, how = 'left')
         hhs_by_geoid10_df.fillna(0, inplace = True)
         popsim_control_df = popsim_control_df.merge(hhs_by_geoid10_df, left_on = 'block_group_id', right_on = 'GEOID10', how = 'left')

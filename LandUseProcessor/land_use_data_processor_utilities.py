@@ -91,7 +91,7 @@ class ParcelDataUserInterface(QDialog, Shared_GUI_Widgets):
         groupbox_layout = QVBoxLayout(groupbox_container)
         groupbox_layout.setContentsMargins(0, 0, 0, 0)
         splitter = QSplitter(Qt.Orientation.Horizontal)
-        partner_container, self.jurisdiction_list_box = self.make_list_panel("Partner Cities", ["Bellevue", "Kirkland", "Redmond"])
+        partner_container, self.jurisdiction_list_box = self.make_list_panel("Partner Cities", ["Bellevue", "Kirkland", "Redmond", "BellevueFringe", "KirklandFringe", "RedmondFringe"])
         splitter.addWidget(partner_container)
 
         # Data Format

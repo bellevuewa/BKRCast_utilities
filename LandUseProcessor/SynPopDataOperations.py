@@ -20,7 +20,7 @@ class SynPopDataOperations:
         self.logger = IndentAdapter(base_logger, indent)
         self.logger.info(f'Start synthetic population operations...')
 
-        base_synpop_summary = self.synpop.summarize_synpop(self.output_dir, self.scen_name)
+        base_synpop_summary = self.synpop.summarize_synpop(self.output_dir, f'{self.scen_name}_base')
         self.updated_hhs_by_parcels_df = base_synpop_summary['summary_by_parcel'].copy()
         self.updated_hhs_by_parcels_df = self.updated_hhs_by_parcels_df.rename(columns = {'total_hhs_by_parcel': 'adj_hhs_by_parcel', 'total_persons_by_parcel':'adj_persons_by_parcel'})        
 
@@ -54,7 +54,7 @@ class SynPopDataOperations:
         adjusted_hhs_by_parcel_df = self.updated_hhs_by_parcels_df.copy()
 
         local_du_df = pd.read_csv(os.path.join(self.output_dir, local_housing_unit_data_file))
-        adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == jurisdiction.upper()]
+        adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'].str.upper() == jurisdiction.upper()]
         local_parcels_provided = local_du_df.shape[0]
         if adjusted_hhs_by_parcel_df.shape[0] != local_parcels_provided:
             self.logger.info('COB forecast does not cover all parcels. Please cehck the missing parcel files for further investigation.')
@@ -70,7 +70,7 @@ class SynPopDataOperations:
 
         adjusted_hhs_by_parcel_df = adjusted_hhs_by_parcel_df.merge(local_du_df[['PSRC_ID', 'source', 'sfhhs', 'mfhhs', 'sfpersons', 'mfpersons']], on = 'PSRC_ID', how = 'left')
         # reset hhs and persons in all COB parcels to zero. Only use local forecast.
-        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'] == jurisdiction.upper(), ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
+        adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['Jurisdiction'].str.upper() == jurisdiction.upper(), ['adj_hhs_by_parcel', 'adj_persons_by_parcel']] = 0
 
         # it is importand to use cobflag rather than Jurisdiction, because (hhs and persons in) parcels flagged by cobflag are provided by COB staff.
         adjusted_hhs_by_parcel_df.loc[adjusted_hhs_by_parcel_df['source'] == 'local_parcel', 'adj_hhs_by_parcel'] = adjusted_hhs_by_parcel_df['sfhhs'] + adjusted_hhs_by_parcel_df['mfhhs']

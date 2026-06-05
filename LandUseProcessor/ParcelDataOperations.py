@@ -133,7 +133,11 @@ class ParcelDataOperations:
         required_cols = ['PSRC_ID'] + jobs_cat
         local_data_df = local_data_df[required_cols]
 
-        full_juris_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == jurisdiction.upper()]  #  a complete list of parcels in Jurisdiction
+        if "Fringe" not in jurisdiction:
+            full_juris_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == jurisdiction.upper()]  #  a complete list of parcels in Jurisdiction
+        else:
+            full_juris_parcels_df = self.lookup_df.loc[self.lookup_df['Jurisdiction'] == jurisdiction]  #  a complete list of parcels in Jurisdiction
+
         actual_juris_parcels_df = local_data_df.loc[local_data_df['PSRC_ID'].isin(full_juris_parcels_df['PSRC_ID'])] # parcels included in local job file
         not_in_full_juris_parcels = actual_juris_parcels_df.loc[~actual_juris_parcels_df['PSRC_ID'].isin(full_juris_parcels_df['PSRC_ID'])] # parcels in local job file but not in the complete list
         missing_juris_parcels_df = updated_parcels_df.loc[updated_parcels_df['PARCELID'].isin(full_juris_parcels_df.loc[~full_juris_parcels_df['PSRC_ID'].isin(local_data_df['PSRC_ID']), 'PSRC_ID'])]

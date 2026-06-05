@@ -38,6 +38,8 @@ class LandUse:
         # Step 1
         #####
         self.lookup_df = pd.read_csv(lookup_file, sep = ',', low_memory = False)
+        # sorting the lookup file
+        self.lookup_df.loc[self.lookup_df['Jurisdiction']=='Redmond', 'Jurisdiction'] = 'REDMOND'
         self.kc_df = None
         self.subarea_df = None
 
@@ -80,6 +82,9 @@ class LandUse:
         # 5/1/2025
         # move the paths into config.py
 
+        # 5/8/2026
+        # lookup_file is changed to TAZs matching with what Redmond provided
+
         self.kc_df = pd.read_csv(os.path.join(working_folder_lu, kingcsqft), sep = ',', low_memory = False)
         self.subarea_df = pd.read_csv(subarea_file, sep = ',')
 
@@ -90,7 +95,6 @@ class LandUse:
 
         logging.info('Exporting job file...')
         # kc_df dataframe may already have ['PSRC_ID', 'JURIS', 'BKRCASTTAZ'], the merge below just to ensure these features match with our BKRCast model
-        # TODO: why below merging with inner instead of left, but for sqft data is with left instead of inner?
         updated_jobs_kc = self.kc_df[jobs_columns_List].merge(self.lookup_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ']], left_on = 'PSRC_ID', right_on = 'PSRC_ID', how = 'inner')
         updated_jobs_kc = updated_jobs_kc.merge(self.subarea_df[['BKRCastTAZ', 'Subarea', 'SubareaName']], left_on = 'BKRCastTAZ', right_on = 'BKRCastTAZ', how = 'left')
         if subset_area != []:
@@ -111,7 +115,6 @@ class LandUse:
             logging.info(f'Sqft file exported: {os.path.join(working_folder_lu, kc_SQFT_file)}')
 
         logging.info('Exporting King County dwelling units...')
-        # TODO: why below merging with inner instead of left, but for sqft data (above) is with left instead of inner?
         du_kc = self.kc_df[dwellingunits_list].merge(self.lookup_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ']], left_on = 'PSRC_ID', right_on = 'PSRC_ID', how = 'inner')
         du_kc = du_kc.merge(self.subarea_df[['BKRCastTAZ', 'Subarea', 'SubareaName']], left_on = 'BKRCastTAZ', right_on = 'BKRCastTAZ', how = 'left')
         if subset_area != []:
@@ -267,6 +270,7 @@ class LandUse:
         # 05/22/2025
         # allowed kirkland input job file to update the original interpolated parcel job data
 
+        self.subarea_df = pd.read_csv(subarea_file, sep = ',')
         self.new_bellevue_parcel_data = pd.read_csv(os.path.join(working_folder_lu, new_bellevue_parcel_data_file_name), sep = ',', low_memory = False)
         self.original_parcel_data_df = pd.read_csv(os.path.join(working_folder_lu, original_parcel_file_name), sep = ' ', low_memory = False)
         # processing Bellevue parcel-level jobs
@@ -284,12 +288,13 @@ class LandUse:
             missing_bellevue_parcels_df.to_csv(fname, sep = ',', index = False)
             logging.warning(f'Some parcels are not covered in the Bellevue lookup table. Exported in {fname}\n')        
         # compare between the old and new job totals
-        newjobs_bellevue = self.new_bellevue_parcel_data['EMPTOT_P'].sum() 
+        newjobs_bellevue = self.new_bellevue_parcel_data[self.new_bellevue_parcel_data['Jurisdiction']=='BELLEVUE']['EMPTOT_P'].sum() 
         logging.info(f'New Bellevue parcel data file has {newjobs_bellevue:,.0f} jobs.\n')
         new_bellevue_parcel_data = self.new_bellevue_parcel_data.set_index('PSRC_ID')
         updated_parcel_df = self.original_parcel_data_df.copy()
         updated_parcel_df = updated_parcel_df.set_index('PARCELID')
-        oldjobs_bellevue = updated_parcel_df.loc[updated_parcel_df.index.isin(new_bellevue_parcel_data.index), 'EMPTOT_P'].sum()
+        taz_belleuve = self.subarea_df[self.subarea_df['Jurisdiction']=='BELLEVUE']['BKRCastTAZ']
+        oldjobs_bellevue = updated_parcel_df.loc[updated_parcel_df['TAZ_P'].isin(taz_belleuve), 'EMPTOT_P'].sum()
         logging.info(f'Bellevue parcels to be replaced have {oldjobs_bellevue:,.0f} jobs')
         logging.info(f'Bellevue parcels after changing have {newjobs_bellevue:,.0f} jobs')
         logging.info(f'Bellevue jobs gained {(newjobs_bellevue - oldjobs_bellevue):,.0f}\n')
@@ -385,6 +390,97 @@ class LandUse:
             for job_column in columns_list:
                 updated_parcel_df.loc[updated_parcel_df.index.isin(parcel_data_kirkland.index), job_column] = parcel_data_kirkland[job_column + '_SCALED']
 
+        # process Redmond parcel-level jobs
+        if new_redmond_parcel_data_file_name != '':
+            logging.info('Processing Redmond jobs...')
+            # process the new parcel jobs
+            new_redmond_parcel_data = pd.read_csv(os.path.join(working_folder_lu, new_redmond_parcel_data_file_name))
+            new_redmond_parcel_data = new_redmond_parcel_data[['BKRCastTAZ', 'EMPTOT_P']].copy(deep=True)
+            new_redmond_parcel_data.rename(columns={'EMPTOT_P': 'Control'}, inplace=True)
+            new_redmond_parcel_data['Control'] = new_redmond_parcel_data['Control'].round(0)
+            redmond_parcel_tazs = self.lookup_df[(self.lookup_df['Jurisdiction']=='Redmond') | (self.lookup_df['Jurisdiction']=='REDMOND')]
+            parcel_data_redmond = self.original_parcel_data_df[self.original_parcel_data_df['TAZ_P'].isin(redmond_parcel_tazs['BKRCastTAZ'])].copy(deep=True)
+            parcel_data_redmond['BKRCastTAZ'] = parcel_data_redmond['TAZ_P']
+            # calculate scaling factor
+            parcel_data_redmond_taz = parcel_data_redmond.groupby(by='BKRCastTAZ').sum()['EMPTOT_P'].reset_index()
+            new_redmond_parcel_data_control = new_redmond_parcel_data[['Control', 'BKRCastTAZ']].groupby('BKRCastTAZ').sum().reset_index()
+            parcel_data_redmond_taz = parcel_data_redmond_taz.merge(new_redmond_parcel_data_control, how='left')
+            parcel_data_redmond_taz['Control'] = parcel_data_redmond_taz['Control'].round(0)
+            parcel_data_redmond_taz['Control'] = parcel_data_redmond_taz['Control'].astype('float64')
+            parcel_data_redmond_taz['EMPTOT_P'] = parcel_data_redmond_taz['EMPTOT_P'].astype('float64')
+            parcel_data_redmond_taz['scaling factor'] = parcel_data_redmond_taz['Control'] / parcel_data_redmond_taz['EMPTOT_P']
+            parcel_data_redmond_taz['scaling factor'].fillna(0, inplace=True)
+            # use the scaling factor to all the jobs in parcels within the corresponding travel model TAZ (TMTAZ)
+            job_columns = [i for i in columns_list if i != 'EMPTOT_P']
+            parcel_data_redmond = parcel_data_redmond.merge(parcel_data_redmond_taz[['scaling factor', 'BKRCastTAZ']], on='BKRCastTAZ', how='left')
+            for job_column in job_columns:
+                parcel_data_redmond[f"{job_column}_SCALED"] = (parcel_data_redmond[job_column].astype('float64') * parcel_data_redmond['scaling factor']).round(0)
+            job_columns_scaled = [f"{i}_SCALED" for i in columns_list if i != 'EMPTOT_P']
+            parcel_data_redmond['EMPTOT_P_SCALED'] = parcel_data_redmond[job_columns_scaled].sum(axis=1)
+            # compare the scaled job number with the control (new parcel data)
+            parcel_data_redmond_scaled = parcel_data_redmond.groupby(by='BKRCastTAZ').sum()['EMPTOT_P_SCALED'].reset_index()
+            parcel_data_redmond_scaled = parcel_data_redmond_scaled.merge(parcel_data_redmond_taz[['Control', 'BKRCastTAZ']], how='left')
+            parcel_data_redmond_scaled['difference'] = parcel_data_redmond_scaled['EMPTOT_P_SCALED'] - parcel_data_redmond_scaled['Control']
+            logging.info(f"New Redmond parcel data file has {parcel_data_redmond_scaled['Control'].sum():,.0f} jobs.")
+            logging.info(f"Scaled Redmond parcel data file has {parcel_data_redmond_scaled['EMPTOT_P_SCALED'].sum():,.0f} jobs.")
+            logging.info(f"Old parcel data file has {parcel_data_redmond['EMPTOT_P'].sum():,.0f} jobs in Redmond.")
+            # merge the scaling factor to the table
+            parcel_data_redmond_scaled = parcel_data_redmond_scaled.merge(parcel_data_redmond_taz[['scaling factor', 'BKRCastTAZ']], on='BKRCastTAZ', how='left')
+            # walk through each BKRCastTAZ and distribute the difference back to parcels
+            logging.info(f"(Scaled Redmond job total - New Redmond job total) = {parcel_data_redmond['EMPTOT_P_SCALED'].sum() - new_redmond_parcel_data['Control'].sum()}")
+            logging.info("\nFinetuning the number of jobs in each parcel in Redmond...")
+            job_scaled_columns = [f'{i}_SCALED' for i in columns_list if i != 'EMPTOT_P']
+            for _, row in parcel_data_redmond_scaled.iterrows():
+                tmtaz = row['BKRCastTAZ']
+                difference = row['difference']
+                parcels_in_tmtaz_df = parcel_data_redmond.loc[(parcel_data_redmond['BKRCastTAZ'] == tmtaz) & \
+                                                               (parcel_data_redmond['EMPTOT_P_SCALED'] > 0)]
+                if len(parcels_in_tmtaz_df) == 0: continue
+                if difference < 0:
+                    # need to add more jobs in those parcels that already have jobs
+                    for _ in range(int(abs(difference))):
+                        parcels_in_tmtaz_df = parcel_data_redmond.loc[(parcel_data_redmond['BKRCastTAZ'] == tmtaz) & \
+                                                                       (parcel_data_redmond['EMPTOT_P_SCALED'] > 0)]
+                        parcel_ids = list(parcels_in_tmtaz_df['PARCELID'])
+                        # randomly select a parcel and a job category
+                        selected_parcel = random.choice(parcel_ids)
+                        selected_parcel_df = parcel_data_redmond[(parcel_data_redmond['PARCELID']==selected_parcel)][job_scaled_columns]
+                        job_pool = selected_parcel_df.columns[(selected_parcel_df > 0).all()].tolist()
+                        selected_job = random.choice(job_pool)
+                        # add one more job on this job category in this selected parcel
+                        parcel_data_redmond.loc[parcel_data_redmond['PARCELID']==selected_parcel, selected_job] += 1
+                        parcel_data_redmond['EMPTOT_P_SCALED'] = parcel_data_redmond[job_scaled_columns].sum(axis=1)
+                else:
+                    # need to reduce the number of jobs in those parcels that already have jobs
+                    for _ in range(int(abs(difference))):
+                        parcels_in_tmtaz_df = parcel_data_redmond.loc[(parcel_data_redmond['BKRCastTAZ'] == tmtaz) & \
+                                                                       (parcel_data_redmond['EMPTOT_P_SCALED'] > 0)]
+                        parcel_ids = list(parcels_in_tmtaz_df['PARCELID'])
+                        # randomly select a parcel and a job category
+                        selected_parcel = random.choice(parcel_ids)
+                        selected_parcel_df = parcel_data_redmond[(parcel_data_redmond['PARCELID']==selected_parcel)][job_scaled_columns]
+                        job_pool = selected_parcel_df.columns[(selected_parcel_df > 0).all()].tolist()
+                        selected_job = random.choice(job_pool)
+                        # add one more job on this job category in this selected parcel
+                        parcel_data_redmond.loc[parcel_data_redmond['PARCELID']==selected_parcel, selected_job] -= 1
+                        parcel_data_redmond['EMPTOT_P_SCALED'] = parcel_data_redmond[job_scaled_columns].sum(axis=1)
+            # compare the final scaled job number with the control
+            logging.info('Finetuning jobs in Kikrland complete! Comparing them again...')
+            parcel_data_redmond_scaled = parcel_data_redmond.groupby(by='BKRCastTAZ').sum()['EMPTOT_P_SCALED'].reset_index()
+            parcel_data_redmond_scaled = parcel_data_redmond_scaled.merge(parcel_data_redmond_taz[['Control', 'BKRCastTAZ']], how='left')
+            parcel_data_redmond_scaled['difference'] = parcel_data_redmond_scaled['EMPTOT_P_SCALED'] - parcel_data_redmond_scaled['Control']
+            logging.info(f"New Redmond parcel data file has {parcel_data_redmond_scaled['Control'].sum():,.0f} jobs.")
+            logging.info(f"Finetuned scaled Redmond parcel data file has {parcel_data_redmond_scaled['EMPTOT_P_SCALED'].sum():,.0f} jobs.")
+            logging.info(f"(Finetuned and scaled Redmond job total - New Redmond job total) = {parcel_data_redmond['EMPTOT_P_SCALED'].sum() - new_redmond_parcel_data['Control'].sum()}")
+            parcel_data_redmond_scaled.to_csv(os.path.join(working_folder_lu, updated_parcel_file_redmond_name.split('.')[0] + f'_{modeller_initial}_{version}.csv'))
+            logging.info(f"Exporting Redmond parcel matching file to: {os.path.join(working_folder_lu, updated_parcel_file_redmond_name.split('.')[0] + f'_{modeller_initial}_{version}.csv')}\n")
+            # replace the old parcels in Redmond with those processed parcels
+            logging.info('Replacing the old parcels in Redmond with the parcels processed with the new numebr of jobs.')
+            parcel_data_redmond.set_index('PARCELID', inplace=True)
+            job_scaled_columns = [f'{i}_SCALED' for i in columns_list]
+            for job_column in columns_list:
+                updated_parcel_df.loc[updated_parcel_df.index.isin(parcel_data_redmond.index), job_column] = parcel_data_redmond[job_column + '_SCALED']
+
         # update the total jobs 
         updated_parcel_df['EMPTOT_P'] = 0
         for col in columns_list:
@@ -451,3 +547,4 @@ class LandUse:
         logging.info(f'Scripts for step 5 backup exported: {os.path.join(working_folder_lu, self.backup_folder, version, os.path.basename(__file__))}')
         logging.info('Step 5 done. Synchronizing the synthetic population to parcel file is completed\n')
         logging.info('Land use process is complete. Please check the output numbers.\n')
+        logging.info('After checking, please replace hh_and_persons.h5 BKRCast model input\popsim with the 20xx_baseyear_hh_and_persons_xx_vx.x.h5 file in I drive.\n')  # I:\Modeling and Analysis Group\01_BKRCast\BKRPopSim\PopulationSim_BaseData\2025baseyear_TestFrom2024baseyear

@@ -31,7 +31,7 @@ print(f"Base total households: {base_hh_df['base_total_hhs'].sum()}")
 print(f"Future total households: {future_hh_df['future_total_hhs'].sum()}")
 
 # calculate interpolation by parcel
-target_year = 2024
+target_year = 2025
 target_hhs_by_parcel_output = pd.read_csv(hhs_by_parcel_filename)
 future_hhs_by_parcel = future_hh_df.groupby(by='PSRC_ID')[['future_total_hhs', 'future_total_persons']].sum().reset_index()
 base_hhs_by_parcel = base_hh_df.groupby(by='PSRC_ID')[['base_total_hhs', 'base_total_persons']].sum().reset_index()

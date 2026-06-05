@@ -24,11 +24,10 @@ print(f"before rounding the number of households at each parcel: {parcel_df['hhe
 print(f"after rounding the number of households at each parcel: {parcel_df_after['HH_P'].sum()}")
 
 # the updated number of houshols in each city should match with what output from step B
-city_to_check = ['Bellevue', 'Kirkland']
 # step B updated parcel hhs
 adjusted_hhs_stepB = pd.read_csv(os.path.join(working_folder_synpop, adjusted_hhs_by_parcel_file))
-for city in city_to_check:
-    parcel_taz_city = parcel_taz_lookup[parcel_taz_lookup['Jurisdiction']==city.upper()]
+for city in subset_area:#+['Rest of KC', 'External']:
+    parcel_taz_city = parcel_taz_lookup[parcel_taz_lookup['Jurisdiction']==city]
     adjusted_hhs_city = adjusted_hhs_stepB[adjusted_hhs_stepB['PSRC_ID'].isin(parcel_taz_city['PSRC_ID'])]
     print(f"Adjusted hhs from step B in {city}: {adjusted_hhs_city['total_hhs'].sum()}")
     parcelized_hhs_city = hh_df[hh_df['hhparcel'].isin(parcel_taz_city['PSRC_ID'])]

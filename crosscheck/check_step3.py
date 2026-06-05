@@ -14,7 +14,7 @@ parcel_earlier_df.columns = [i.upper() for i in parcel_earlier_df.columns]
 parcel_latter_df = pd.read_csv(parcel_file_name_latter, sep = ' ')
 parcel_latter_df.columns = [i.upper() for i in parcel_latter_df.columns]
 
-target_year = 2024
+target_year = 2025
 for city in ['BELLEVUE', 'KIRKLAND', 'REDMOND']:
     city_records = lookup_df[lookup_df['Jurisdiction']==city]
     

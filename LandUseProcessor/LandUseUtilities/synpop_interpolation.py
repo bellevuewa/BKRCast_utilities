@@ -4,6 +4,7 @@ import pandas as pd
 from LandUseUtilities.Parcels import Parcels
 from utility import Job_Categories, IndentAdapter, backupScripts, dialog_level, h5_to_df, df_to_h5
 import h5py
+import numpy as np
 from LandUseUtilities.synthetic_population import SyntheticPopulation
 
 class synpop_interpolation:
@@ -87,12 +88,14 @@ class LinearSynPopInterpolator(synpop_interpolation):
         target_hhs_by_parcel.fillna(0, inplace = True)
         target_hhs_by_parcel['total_hhs_by_parcel'] = target_hhs_by_parcel['base_total_hhs'] + (target_hhs_by_parcel['future_total_hhs'] - target_hhs_by_parcel['base_total_hhs']) * ratio
         target_hhs_by_parcel['total_persons_by_parcel'] = target_hhs_by_parcel['base_total_persons'] + (target_hhs_by_parcel['future_total_persons'] - target_hhs_by_parcel['base_total_persons']) * ratio
+        # target_hhs_by_parcel['total_hhs_by_parcel'] = target_hhs_by_parcel['total_hhs_by_parcel'].clip(lower = 0)
+        # target_hhs_by_parcel['total_persons_by_parcel'] = target_hhs_by_parcel['total_persons_by_parcel'].clip(lower = 0)
+        
         target_hhs_by_parcel.drop(['base_total_hhs', 'base_total_persons', 'future_total_hhs', 'future_total_persons'], axis = 1, inplace = True)
         target_hhs_by_parcel.reset_index(inplace = True)
         target_hhs_by_parcel = parcel_df[['PSRC_ID', 'Jurisdiction', 'BKRCastTAZ', 'GEOID10']].merge(target_hhs_by_parcel[['PSRC_ID', 'total_hhs_by_parcel', 'total_persons_by_parcel']], on = 'PSRC_ID', how = 'left')
         target_hhs_by_parcel.fillna(0, inplace= True)
-
-        hhs_by_parcel_filename = f'{horizon_year}_hhs_by_parcels_from_{left_synpop.data_year}_{right_synpop.data_year}.csv'
+        hhs_by_parcel_filename = f'{horizon_year}_hhs_by_parcels_interpolated_from_{left_synpop.data_year}_{right_synpop.data_year}.csv'
         target_hhs_by_parcel.to_csv(os.path.join(self.output_folder, hhs_by_parcel_filename), index = False)
         self.logger.info(f'interpolation by parcel is saved in {hhs_by_parcel_filename}')
 
@@ -100,19 +103,60 @@ class LinearSynPopInterpolator(synpop_interpolation):
         target_hhs_by_taz = target_hhs_by_taz.loc[target_hhs_by_taz['total_hhs_by_parcel'] > 0]
         future_hh_df.drop(['PSRC_ID', 'future_total_persons', 'future_total_hhs', 'GEOID10', 'BKRCastTAZ'], axis = 1, inplace=True)
         target_hhs_df = pd.DataFrame()
+        np.random.seed(1)
 
-        for taz in target_hhs_by_taz['BKRCastTAZ'].tolist():
-            hhs_in_taz = future_hh_df.loc[future_hh_df['hhtaz'] == taz]
-            num_hhs_popsim = hhs_in_taz['hhexpfac'].sum()
-            num_hhs = int(target_hhs_by_taz.loc[target_hhs_by_taz['BKRCastTAZ'] == taz, 'total_hhs_by_parcel'].tolist()[0])
-            if num_hhs_popsim > num_hhs:
-                target_hhs_df = pd.concat([target_hhs_df, hhs_in_taz.sample(n = num_hhs)])
+        next_hhno = int(future_hh_df['hhno'].max()) + 1
+        # Fast TAZ lookup
+        hhs_by_taz = {taz: grp for taz, grp in future_hh_df.groupby('hhtaz')}
+        household_parts = []
+
+        # Mapping from source hhno -> output hhno
+        mapping_rows = []
+
+        for row in target_hhs_by_taz.itertuples(index=False):
+            taz = row.BKRCastTAZ
+            target_hhs = int(round(row.total_hhs_by_parcel))
+            hhs_in_taz = hhs_by_taz.get(taz)
+
+            if hhs_in_taz is None:
+                continue
+
+            source_hhnos = hhs_in_taz['hhno'].values
+            available_hhs = len(source_hhnos)
+
+            # Downsample
+            if available_hhs >= target_hhs:
+                sampled = hhs_in_taz.sample(n=target_hhs, replace=False)
+                household_parts.append(sampled)
+                mapping_rows.extend(zip(sampled['hhno'].values, sampled['hhno'].values))
+            # Upsample
             else:
-                target_hhs_df = pd.concat([target_hhs_df, hhs_in_taz.sample(n = num_hhs_popsim)])
-        self.logger.info(f"total hhs after interpolation: {target_hhs_df['hhexpfac'].sum()}")
+                household_parts.append(hhs_in_taz)
+                mapping_rows.extend(zip(source_hhnos, source_hhnos))
+                additional_needed = target_hhs - available_hhs
+                duplicate_hhnos = np.random.choice(source_hhnos, size=additional_needed, replace=True)
+                hh_lookup = hhs_in_taz.set_index('hhno')
 
+                for source_hhno in duplicate_hhnos:
+                    new_hhno = next_hhno
+                    next_hhno += 1
+                    hh_copy = hh_lookup.loc[[source_hhno]].copy()
+                    hh_copy['hhno'] = new_hhno
+                    household_parts.append(hh_copy)
+                    mapping_rows.append((source_hhno, new_hhno))
+
+        # Final household table
+        target_hhs_df = pd.concat(household_parts,ignore_index=True)
+
+        # Expand persons ONCE
+        hh_map = pd.DataFrame(mapping_rows, columns=['source_hhno', 'hhno'])
         future_persons_df = right_synpop.persons_df
-        target_persons_df = future_persons_df.loc[future_persons_df['hhno'].isin(target_hhs_df['hhno'])]
+        target_persons_df = future_persons_df.loc[future_persons_df['hhno'].isin(target_hhs_df['hhno'])]        
+        target_persons_df = hh_map.merge(target_persons_df, left_on='source_hhno', right_on='hhno', how='left')
+        target_persons_df.drop(columns=['source_hhno', 'hhno_y'], inplace=True)
+        target_persons_df.rename(columns={'hhno_x': 'hhno'}, inplace=True)
+
+        self.logger.info(f"total hhs after interpolation: {target_hhs_df['hhexpfac'].sum()}")
         self.logger.info(f"total persons after interpolation: {target_persons_df['psexpfac'].sum()}")
 
         avg_person_per_hhs_df = target_hhs_by_parcel[['Jurisdiction', 'total_hhs_by_parcel', 'total_persons_by_parcel']].groupby('Jurisdiction').sum()

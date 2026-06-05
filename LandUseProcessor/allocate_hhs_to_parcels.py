@@ -145,8 +145,10 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
 
         hhs_df = pd.read_csv(os.path.join(self.output_dir, self.synthetic_household_filename))
         hhs_df['hhparcel'] = 0
-        hhs_by_GEOID10 = hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()
+        if 'VEH' in hhs_df.columns:
+            hhs_df.rename(columns = {'VEH': 'hhvehs'}, inplace = True)
 
+        hhs_by_GEOID10 = hhs_df[['block_group_id', 'hhexpfac']].groupby('block_group_id').sum()
         parcels_for_allocation_df = pd.read_csv(os.path.join(self.output_dir, self.guide_filename))
         # remove any blockgroup ID is Nan.
         all_blcgrp_ids = hhs_df['block_group_id'].unique()
@@ -156,128 +158,137 @@ class HouseholdAllocation(QDialog, Shared_GUI_Widgets):
         # special treatment on GEOID10 530619900020. Since in 2016 ACS no hhs lived in this census blockgroup, when creating popsim control file
         # we move all hhs in this blockgroup to 530610521042. We need to do the same thing when we allocate hhs to parcels.
         parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == 530619900020) & (parcels_for_allocation_df['total_hhs'] > 0), 'GEOID10'] = 530610521042
+        parcels_for_allocation_df = parcels_for_allocation_df.loc[parcels_for_allocation_df['total_hhs'] > 0].copy()
 
-        hhs_by_blkgrp_popsim = hhs_df.groupby('block_group_id')[['hhexpfac', 'hhsize']].sum()
-        hhs_by_blkgrp_parcel = parcels_for_allocation_df.groupby('GEOID10')[['total_hhs']].sum()
-        final_hhs_df = pd.DataFrame()
+        parcel_groups = {k: v.copy() for k, v in parcels_for_allocation_df.groupby('GEOID10')}
+        hh_groups = {k: v.copy() for k, v in hhs_df.groupby('block_group_id')}
+        hhs_by_GOEID10 = hhs_df.groupby('block_group_id')[['hhexpfac']].sum()
+        final_hhs_list = []
 
-        for blcgrpid in all_blcgrp_ids:
-            # if (hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac'] != hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']):
-            #     print(f"GEOID10 {blcgrpid}:  popsim: {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']}, parcel: {hhs_by_blkgrp_parcel.loc[blcgrpid, 'total_hhs']}")
-            #     print('popsim should equal parcel. You need to fix this issue before moving forward.')
-            #     exit(-1)
-            num_parcels = 0 
-            num_hhs = 0
-            parcels_in_GEOID10_df = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)]
-            subtotal_parcels = parcels_in_GEOID10_df.shape[0]
-            control_total = parcels_in_GEOID10_df['total_hhs'].sum()
-            j_start_index = 0
-            selected_hhs_df = hhs_df.loc[(hhs_df['block_group_id'] == blcgrpid) & (hhs_df['hhparcel'] == 0)].copy()
-            numhhs_avail_for_alloc = selected_hhs_df['hhexpfac'].sum()
-            index_hhparcel = selected_hhs_df.columns.get_loc('hhparcel')
-            for i in range(subtotal_parcels):
-                numHhs = parcels_in_GEOID10_df['total_hhs'].iat[i]
-                parcelid = parcels_in_GEOID10_df['PSRC_ID'].iat[i]
-                for j in range(int(numHhs)):
-                    if num_hhs < numhhs_avail_for_alloc:
-                        selected_hhs_df.iat[j + j_start_index, index_hhparcel] = parcelid 
-                        num_hhs += 1          
-                num_parcels += 1
-                j_start_index += int(numHhs)
+        for idx, blcgrpid in enumerate(all_blcgrp_ids):
+            if idx % 100 == 0:
+                print(f'{idx} block group processed.')
 
-            ## take care some unallocated hhs here
-            unallocated_num = numhhs_avail_for_alloc - control_total
+            if blcgrpid not in parcel_groups:
+                print(f'No parcel records for GEOID10 {blcgrpid}')
+                continue
+
+            if blcgrpid not in hh_groups:
+                print(f'No households for GEOID10 {blcgrpid}')
+                continue            
+
+            parcels_in_GEOID10_df = parcel_groups[blcgrpid]
+            selected_hhs_df = hh_groups[blcgrpid].copy()
+            control_total = int(parcels_in_GEOID10_df['total_hhs'].sum())
+            numhhs_avail_for_alloc = int(selected_hhs_df['hhexpfac'].sum())
+
+            # create repeated parcel list
+            parcel_ids = np.repeat(parcels_in_GEOID10_df['PSRC_ID'].to_numpy(), parcels_in_GEOID10_df['total_hhs'].astype(int).to_numpy())
+            allocation_size = min(len(parcel_ids), selected_hhs_df.shape[0])
+            selected_hhs_df.iloc[:allocation_size, selected_hhs_df.columns.get_loc('hhparcel')] = parcel_ids[:allocation_size]
+            unallocated_num = (numhhs_avail_for_alloc - control_total)
+
+            if unallocated_num < 0: 
+                self.logger.info(f'Error GEOID10 {blcgrpid}: parcel control {control_total} is greater than available hhs {numhhs_avail_for_alloc}. ')
+                continue
+
             if unallocated_num > 0:
-                for j in range(int(unallocated_num)):
-                    if (j + j_start_index) < selected_hhs_df.shape[0]:
-                        random_picked_pids = parcels_for_allocation_df.loc[(parcels_for_allocation_df['GEOID10'] == blcgrpid) & (parcels_for_allocation_df['total_hhs'] > 0)].sample(n = unallocated_num)['PSRC_ID'].to_numpy()
-                        selected_hhs_df.iat[j + j_start_index, index_hhparcel] = random_picked_pids[j] 
+                valid_pids = parcels_in_GEOID10_df['PSRC_ID']
 
-            final_hhs_df = pd.concat([final_hhs_df, selected_hhs_df])
+                if len(valid_pids) == 0:
+                    self.logger.info(f'Warning: No valid parcels for unallocated hhs in GEOID10 {blcgrpid}. Unallocated hhs: {unallocated_num}')
+                    continue
 
-            print(f"Control: {control_total}, {hhs_by_GEOID10.loc[blcgrpid, 'hhexpfac']} (actual {num_hhs}) hhs allocated to GEOID10 {blcgrpid}, {num_parcels} parcels are processed")
+                random_picked_pids = valid_pids.sample(n = unallocated_num, replace = True).to_numpy()
+                start = allocation_size
+                end = min(allocation_size + unallocated_num, selected_hhs_df.shape[0])
+                selected_hhs_df.iloc[start:end, selected_hhs_df.columns.get_loc('hhparcel')] = random_picked_pids[: end - start]
 
-        final_hhs_df = final_hhs_df.merge(parcels_for_allocation_df[['PSRC_ID', 'BKRCastTAZ']], how = 'left', left_on = 'hhparcel', right_on = 'PSRC_ID')
-        final_hhs_df.rename(columns = {'BKRCastTAZ': 'hhtaz'}, inplace = True)
-        final_hhs_df.drop(columns = ['PSRC_ID'], axis = 1, inplace = True)
+            final_hhs_list.append(selected_hhs_df)
+            self.logger.info(f'GEOID10 {blcgrpid}: control: {control_total} available: {numhhs_avail_for_alloc} allocated: {allocation_size}')
 
-        # -1 pdairy ppaidprk pspcl,pstaz ptpass,puwarrp,puwdepp,puwmode,pwpcl,pwtaz 
-        # pstyp is covered by pptyp and pwtyp, misssing: puwmode -1 puwdepp -1 puwarrp -1 pwpcl -1 pwtaz -1 ptpass -1  pspcl,pstaz 
-        # 1 psexpfac 
-        extra_cols = {
-            'pdairy': -1, 'pno': -1, 'ppaidprk': -1, 'psexpfac': 1, 'pspcl': -1,
-            'pstaz': -1, 'pptyp': -1, 'ptpass': -1, 'puwarrp': -1, 'puwdepp': -1,
-            'puwmode': -1,'pwpcl': -1, 'pwtaz': -1
-        }
+        self.logger.info('Concatenating households...')
+        final_hhs_df = pd.concat(final_hhs_list, ignore_index = True, sort = False)
 
+        self.logger.info('Adding TAZ info...')
+        parcel_lookup = parcels_for_allocation_df[['PSRC_ID', 'BKRCastTAZ']].drop_duplicates('PSRC_ID')
+        final_hhs_df = final_hhs_df.merge(parcel_lookup, how='left', left_on='hhparcel', right_on='PSRC_ID')
+        final_hhs_df.rename(columns={'BKRCastTAZ': 'hhtaz'}, inplace=True)
+        final_hhs_df.drop(columns=['PSRC_ID'], inplace=True, errors='ignore')
+
+        self.logger.info('processing persons...')
+        ### process other attributes to match required columns
         pop_df = pd.read_csv(os.path.join(self.output_dir, self.synthetic_person_filename)) 
         pop_df.rename(columns={'household_id':'hhno', 'SEX':'pgend'}, inplace = True)
-        for col, val in extra_cols.items():
-            pop_df[col] = val
         pop_df.sort_values(by = 'hhno', inplace = True)
-        ages = pop_df['pagey']
-        pop_df['WKW'] = pop_df['WKW'].fillna(-1)
-        pop_df['pstyp'] = pop_df['pstyp'].fillna(-1)      
-        ####here assign household size in household size and person numbers in person file
-        hhsize_df = pop_df.groupby('hhno')[['psexpfac']].sum().reset_index()
-        final_hhs_df.rename(columns = {'household_id':'hhno'}, inplace = True)
-        final_hhs_df = final_hhs_df.merge(hhsize_df, how = 'inner', left_on = 'hhno', right_on = 'hhno')
-        final_hhs_df['hhsize'] = final_hhs_df['psexpfac']
-        final_hhs_df.drop(['psexpfac'], axis = 1, inplace = True)
-        final_hhs_df['hownrent'] = -1
-        #=========================================
-     
-        pwtype = pop_df['WKW']
-        pstype = pop_df['pstyp']
-        set(pwtype)
 
-        fullworkers = pop_df['WKW'].isin([1, 2])
-        # fullworkers=[1, 2]
-        partworkers = pop_df['WKW'].isin([3.0, 4.0, 5.0, 6.0])
-        # partworkers=[3.0, 4.0, 5.0, 6.0]
-        noworker = pop_df['WKW'].isin([-1])
-        # noworker=[-1]
+        # initialize columns
+        pop_df['pdairy'] = -1
+        pop_df['ppaidprk'] = -1
+        pop_df['psexpfac'] = 1
+        pop_df['pspcl'] = -1
+        pop_df['pstaz'] = -1
+        pop_df['pptyp'] = -1
+        pop_df['ptpass'] = -1
+        pop_df['puwarrp'] = -1
+        pop_df['puwdepp'] = -1
+        pop_df['puwmode'] = -1
+        pop_df['pwpcl'] = -1
+        pop_df['pwtaz'] = -1
 
-        fullstudents = pop_df['pstyp'].between(3, 16) # inclusive both ends
-        # fullstudents=[3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0]
-        nostudents = pop_df['pstyp'].isin([-1, 0, 1.0, 2.0])
-        # nostudents = [-1, 0, 1.0, 2.0]
-        pp5 = pop_df['pstyp'].isin([15, 16])
-        # pp5=[15, 16]
-        pp6 = pop_df['pstyp'].isin([13.0, 14.0])
-        # pp6=[13.0, 14.0]
-        pp7 = pop_df['pstyp'].between(2.0, 12.0) # inclusive both ends
-        # pp7=[2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0]
-        pp8 = pop_df['pstyp'].isin([1])
-        # pp8=[1]
-
-        lenpersons=pop_df.shape[0] #3726050
-        #pptyp Person type (1=full time worker, 2=part time worker, 3=non-worker age 65+, 4=other non-working adult, 
-        #5=university student, 6=grade school student/child age 16+, 7=child age 5-15, 8=child age 0-4); 
-        #this could be made optional and computed within DaySim for synthetic populations based on ACS PUMS; for other survey data, the coding and rules may be more variable and better done outside DaySim
-
+        self.logger.info('assigning person numbers...')
         pop_df['pno'] = pop_df.groupby('hhno').cumcount() + 1
-        pop_df.loc[nostudents, 'pstyp'] = 0
-        pop_df.loc[fullstudents, 'pstyp'] = 1
+
+        self.logger.info('processing person types...')
+        pop_df['WKW'] = pop_df['WKW'].fillna(-1)
+        pop_df['pstyp'] = pop_df['pstyp'].fillna(-1)
+        ages = pop_df['pagey']
+        # full time and part time workers: WKW from PUMS data
+        fullworkers=[1, 2]
+        partworkers=[3, 4, 5, 6]
+        nonworkers=[-1]
+        fullstudents = list(range(3, 17))
+        nonstudents = [-1, 0, 1, 2]
+        pp5=[15, 16]
+        pp6=[13, 14]
+        pp7=list(range(2, 13))
+        pp8=[1]
         pop_df['pwtyp'] = 0
-        pop_df.loc[fullworkers, ['pwtyp', 'pptyp']]= 1
-        pop_df.loc[partworkers, ['pwtyp', 'pptyp']] = 2
-        pop_df.loc[noworker & ages.between(0, 5, inclusive='left'), 'pptyp'] = 8
-        pop_df.loc[noworker & ages.between(5, 15), 'pptyp'] = 7
-        pop_df.loc[noworker & (ages.between(15, 65, inclusive='left')), 'pptyp'] = 4        
-        pop_df.loc[noworker & (ages >= 65), 'pptyp'] = 3
 
-        pop_df.loc[partworkers & fullstudents, 'pstyp'] = 2
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pwtyp'] = 1
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pwtyp'] = 2
+        pop_df.loc[pop_df['pstyp'].isin(nonstudents), 'pstyp'] = 0
+        pop_df.loc[pop_df['pstyp'].isin(fullstudents), 'pstyp'] = 1
+        pop_df.loc[pop_df['WKW'].isin(partworkers) & pop_df['pstyp'] == 1, 'pstyp'] = 2
+        pop_df['pptyp'] = 4
+        mask_nonworkers = pop_df['WKW'].isin(nonworkers) 
+        pop_df.loc[mask_nonworkers & (ages >= 65), 'pptyp'] = 3
+        pop_df.loc[mask_nonworkers & (ages.between(16, 64)), 'pptyp'] = 4 # inclusive on both ends
+        pop_df.loc[mask_nonworkers & (ages.between(5, 15)), 'pptyp'] = 7
+        pop_df.loc[mask_nonworkers & (ages < 5), 'pptyp'] = 8
+        pop_df.loc[pop_df['WKW'].isin(fullworkers), 'pptyp'] = 1
+        pop_df.loc[pop_df['WKW'].isin(partworkers), 'pptyp'] = 2
+        pop_df.loc[pop_df['pstyp'].isin(pp5), 'pptyp'] = 5
+        pop_df.loc[pop_df['pstyp'].isin(pp6), 'pptyp'] = 6
+        pop_df.loc[pop_df['pstyp'].isin(pp7), 'pptyp'] = 7
+        pop_df.loc[pop_df['pstyp'].isin(pp8), 'pptyp'] = 8
 
-        pop_df.loc[pp5, 'pptyp'] = 5
-        pop_df.loc[pp6, 'pptyp'] = 6        
-        pop_df.loc[pp7, 'pptyp'] = 7 
-        pop_df.loc[pp8, 'pptyp'] = 8 
+        self.logger.info('updating household size...')
+        hhsize_df = pop_df.groupby('hhno')[['psexpfac']].sum().reset_index()
+        final_hhs_df.rename(columns = {'household_id': 'hhno'}, inplace = True)
+        final_hhs_df = final_hhs_df.merge(hhsize_df, how = 'inner', on = 'hhno')
+        final_hhs_df['hhsize'] = final_hhs_df['psexpfac']
+        final_hhs_df.drop(columns = ['psexpfac'], inplace = True)
 
-        pop_df.drop(['block_group_id', 'hh_id', 'PUMA', 'WKW'], axis = 1, inplace = True)
+        dropcols = ['block_group_id', 'hh_id', 'PUMA', 'WKW']
+        pop_df.drop(columns = dropcols, inplace = True, errors = 'ignore')
+        if 'hownrent' in final_hhs_df.columns:
+            final_hhs_df.drop(columns = ['hownrent'], inplace = True)
 
+        final_hhs_df['hownrent'] = -1
         pop_df = pop_df.loc[pop_df['hhno'].isin(final_hhs_df['hhno'])]
 
+        self.logger.info('exporting h5 file...')
         output_fn = os.path.join(self.output_dir, output_filename)
         with h5py.File(output_fn, 'w') as output_h5_file:
             df_to_h5(final_hhs_df, output_h5_file, 'Household')
